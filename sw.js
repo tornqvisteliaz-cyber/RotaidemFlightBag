@@ -1,6 +1,6 @@
 // Offline cache: app shell + airport database are cached on install; CDN libraries,
 // map land data and chart libraries are cached the first time they are used.
-const VERSION = "rfb-v5";
+const VERSION = "rfb-v6";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest",
   "css/ios.css", "css/apps.css", "css/enroute.css", "css/tools.css", "css/live.css", "css/briefing.css", "css/home.css",

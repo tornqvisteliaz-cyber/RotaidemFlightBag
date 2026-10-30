@@ -30,12 +30,51 @@ export const fetchFIRNames = () => cached("firnames", async () => {
 });
 
 export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZoom = 12 } = {}) {
+  // Canvas instead of SVG: thousands of FIR/coastline vertices redraw far faster while panning.
   const map = L.map(el, {
     center, zoom, minZoom, maxZoom, zoomControl: false, attributionControl: true,
-    worldCopyJump: true, zoomSnap: 0.25, wheelPxPerZoomLevel: 90, preferCanvas: false, fadeAnimation: true,
+    worldCopyJump: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110, wheelDebounceTime: 30,
+    preferCanvas: true, renderer: L.canvas({ padding: 0.35, tolerance: 3 }), fadeAnimation: true, markerZoomAnimation: true,
   });
   map.attributionControl.setPrefix("");
   return map;
+}
+
+/**
+ * Shows only the markers inside the view, adding/removing the difference after each
+ * move (no full rebuild), and creating each marker lazily the first time it is needed.
+ * items: array of data; pos(item) -> [lat, lon]; want(item, zoom) -> bool;
+ * make(item, zoom) -> L.Marker; key(item, zoom) -> string (variants, e.g. with/without label).
+ */
+export function viewportMarkers(map, items, { pos, want, make, key = (it, z, i) => String(i), pad = 0.15, max = 900 }) {
+  const group = L.layerGroup();
+  const cache = new Map();
+  let shown = new Map();
+  let raf = 0;
+  const update = () => {
+    raf = 0;
+    if (!map.hasLayer(group)) return;
+    const z = map.getZoom(), b = map.getBounds().pad(pad);
+    const next = new Map();
+    for (let i = 0; i < items.length && next.size < max; i++) {
+      const it = items[i];
+      if (!want(it, z)) continue;
+      const [la, lo] = pos(it);
+      if (!b.contains([la, lo])) continue;
+      const k = key(it, z, i);
+      let m = shown.get(k) || cache.get(k);
+      if (!m) { m = make(it, z); cache.set(k, m); }
+      next.set(k, m);
+    }
+    for (const [k, m] of shown) if (!next.has(k)) group.removeLayer(m);
+    for (const [k, m] of next) if (!shown.has(k)) group.addLayer(m);
+    shown = next;
+  };
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+  group.on("add", () => { map.on("moveend", schedule); schedule(); });
+  group.on("remove", () => { map.off("moveend", schedule); group.clearLayers(); shown = new Map(); });
+  group.refresh = () => { for (const m of shown.values()) group.removeLayer(m); shown = new Map(); cache.clear(); schedule(); };
+  return group;
 }
 
 /** Vector land / border layer (Natural Earth via world-atlas). */
@@ -58,17 +97,17 @@ export async function firLayer(map, style = "charts") {
   const lineStyle = style === "fd"
     ? [{ color: "#2b2b2b", weight: 1.3, fill: false, interactive: false }, { color: "#2b2b2b", weight: 5, dashArray: "1.2 11", fill: false, opacity: .75, interactive: false }]
     : [{ color: "#6f9a52", weight: 1.6, dashArray: "7 5", fill: false, interactive: false }];
-  for (const s of lineStyle) g.addLayer(L.geoJSON(geo, { style: s, interactive: false }));
-  const labels = L.layerGroup();
-  for (const f of geo.features) {
-    const p = f.properties;
-    const n = names.get(p.id);
-    if (!p.label_lat) continue;
-    labels.addLayer(L.marker([+p.label_lat, +p.label_lon], {
-      interactive: false,
-      icon: L.divIcon({ className: `fir-label st-${style}`, html: `<span>${esc(p.id)}${n && style === "fd" ? ` FIR` : ""}</span>`, iconSize: null }),
-    }));
-  }
+  for (const s of lineStyle) g.addLayer(L.geoJSON(geo, { style: { ...s, smoothFactor: 1.6 }, interactive: false }));
+  const feats = geo.features.filter(f => f.properties.label_lat);
+  const labels = viewportMarkers(map, feats, {
+    pos: f => [+f.properties.label_lat, +f.properties.label_lon],
+    want: (f, z) => z >= 3,
+    make: f => L.marker([+f.properties.label_lat, +f.properties.label_lon], {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({ className: `fir-label st-${style}`, html: `<span>${esc(f.properties.id)}${names.get(f.properties.id) && style === "fd" ? " FIR" : ""}</span>`, iconSize: null }),
+    }),
+    max: 250,
+  });
   g.labels = labels;
   g.names = names;
   g.geo = geo;
@@ -78,61 +117,48 @@ export async function firLayer(map, style = "charts") {
 /** Airports as gear symbols. */
 export async function airportLayer(map, { highlight = [], color = "#4c6b54", labels = true, minSize = 0 } = {}) {
   const all = await allAirports();
-  const lg = L.layerGroup();
   const hl = new Set(highlight);
   const gear = c => `<svg viewBox="0 0 20 20" width="16" height="16"><g fill="none" stroke="${c}" stroke-width="2"><circle cx="10" cy="10" r="5"/>${[0, 45, 90, 135].map(a => `<line x1="10" y1="1.5" x2="10" y2="18.5" transform="rotate(${a} 10 10)"/>`).join("")}</g><circle cx="10" cy="10" r="3.4" fill="#fff" stroke="${c}" stroke-width="1.5"/></svg>`;
-  const items = [];
-  for (const a of all) {
-    if (a[8] < minSize && !hl.has(a[0])) continue;
-    const isHl = hl.has(a[0]);
-    const m = L.marker([a[5], a[6]], {
-      icon: L.divIcon({ className: `apt-sym ${isHl ? "hl" : ""} s${a[8]}`, html: `${gear(isHl ? "#d22fc9" : color)}${labels ? `<b>${a[0]}</b>` : ""}`, iconSize: [16, 16], iconAnchor: [8, 8] }),
-      keyboard: false,
-    });
-    m.apt = a;
-    items.push(m);
-  }
-  // Only show what fits the zoom level, to keep the DOM small.
-  const update = () => {
-    const z = map.getZoom(), b = map.getBounds().pad(0.2);
-    lg.clearLayers();
-    for (const m of items) {
-      const a = m.apt;
-      const need = hl.has(a[0]) || (a[8] === 2 && z >= 4) || (a[8] === 1 && z >= 6) || (a[8] === 0 && z >= 7.5);
-      if (need && b.contains(m.getLatLng())) lg.addLayer(m);
-    }
-  };
-  map.on("moveend zoomend", update);
-  lg.on("add", update);
-  lg.items = items;
+  const items = all.filter(a => a[8] >= minSize || hl.has(a[0]));
+  const lg = viewportMarkers(map, items, {
+    pos: a => [a[5], a[6]],
+    // Only what fits the zoom level keeps the map light.
+    want: (a, z) => hl.has(a[0]) || (a[8] === 2 && z >= 4) || (a[8] === 1 && z >= 6) || (a[8] === 0 && z >= 7.5),
+    key: a => a[0],
+    make: a => {
+      const isHl = hl.has(a[0]);
+      const m = L.marker([a[5], a[6]], {
+        keyboard: false,
+        icon: L.divIcon({ className: `apt-sym ${isHl ? "hl" : ""} s${a[8]}`, html: `${gear(isHl ? "#d22fc9" : color)}${labels ? `<b>${a[0]}</b>` : ""}`, iconSize: [16, 16], iconAnchor: [8, 8] }),
+      });
+      m.apt = a;
+      return m;
+    },
+    pad: 0.2, max: 700,
+  });
   return lg;
 }
 
 /** VOR / NDB symbols with frequency boxes at higher zooms. */
 export async function navaidLayer(map, { ndb = false } = {}) {
   const nav = await loadNavaids();
-  const lg = L.layerGroup();
   const vor = `<svg viewBox="0 0 20 20" width="14" height="14"><polygon points="5,1.5 15,1.5 19.5,10 15,18.5 5,18.5 0.5,10" fill="none" stroke="#2f8f4a" stroke-width="1.8"/><circle cx="10" cy="10" r="1.6" fill="#2f8f4a"/></svg>`;
   const ndbSym = `<svg viewBox="0 0 20 20" width="13" height="13"><circle cx="10" cy="10" r="8" fill="none" stroke="#a3507f" stroke-width="1.6" stroke-dasharray="1.5 1.5"/><circle cx="10" cy="10" r="2" fill="#a3507f"/></svg>`;
-  const update = () => {
-    lg.clearLayers();
-    const z = map.getZoom();
-    if (z < 6) return;
-    const b = map.getBounds().pad(0.1);
-    for (const n of nav) {
+  const lg = viewportMarkers(map, nav, {
+    pos: n => [n[4], n[5]],
+    want: (n, z) => z >= 6 && (ndb || n[2] !== "NDB"),
+    key: (n, z, i) => `${i}${z >= 7 ? "L" : ""}`,
+    make: (n, z) => {
       const isNdb = n[2] === "NDB";
-      if (isNdb && !ndb) continue;
-      if (!b.contains([n[4], n[5]])) continue;
       const freq = isNdb ? `${n[3]}` : (n[3] / 1000).toFixed(1);
-      lg.addLayer(L.marker([n[4], n[5]], {
-        interactive: false,
+      return L.marker([n[4], n[5]], {
+        interactive: false, keyboard: false,
         icon: L.divIcon({ className: "nav-sym", html: `${isNdb ? ndbSym : vor}${z >= 7 ? `<span class="${isNdb ? "ndb" : ""}">${isNdb ? "" : "D"}${freq} ${esc(n[0])}</span>` : ""}`, iconSize: [14, 14], iconAnchor: [7, 7] }),
-      }));
-    }
-  };
-  map.on("moveend zoomend", update);
-  lg.on("add", update);
-  lg.setNdb = v => { ndb = v; update(); };
+      });
+    },
+    pad: 0.1, max: 500,
+  });
+  lg.setNdb = v => { ndb = v; lg.refresh(); };
   return lg;
 }
 
@@ -201,15 +227,19 @@ export async function radar(map, { opacity = 0.65 } = {}) {
   let idx = (meta.radar?.past?.length || 1) - 1;
   const layerFor = i => {
     const f = frames[i];
-    if (!layers.has(f.path)) layers.set(f.path, L.tileLayer(`${meta.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`, { opacity: 0, maxNativeZoom: 7, maxZoom: 14, zIndex: 400, attribution: "Radar © RainViewer" }));
+    if (!layers.has(f.path)) layers.set(f.path, L.tileLayer(`${meta.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`, { opacity, maxNativeZoom: 7, maxZoom: 14, zIndex: 400, updateWhenZooming: false, keepBuffer: 1, attribution: "Radar © RainViewer" }));
     return layers.get(f.path);
   };
   const setFrame = i => {
     idx = Math.max(0, Math.min(frames.length - 1, i));
     const want = layerFor(idx);
-    if (!group.hasLayer(want)) group.addLayer(want);
     want.setOpacity(opacity);
-    for (const [, l] of layers) if (l !== want) l.setOpacity(0);
+    if (!group.hasLayer(want)) group.addLayer(want);
+    // Keep only the visible frame on the map (hidden frames still cost GPU time);
+    // drop the previous one once the new one has drawn, so playback doesn't flash.
+    const old = [...layers.values()].filter(l => l !== want && group.hasLayer(l));
+    if (old.length) want.once("load", () => old.forEach(l => group.removeLayer(l)));
+    setTimeout(() => old.forEach(l => { if (group.hasLayer(l) && layerFor(idx) !== l) group.removeLayer(l); }), 1500);
   };
   group.on("add", () => setFrame(idx));
   return { layer: group, frames, setFrame, get index() { return idx; } };
@@ -307,10 +337,10 @@ export function basemap(map, style = "charts") {
   const layers = [];
   let land = null;
   if (style === "fd") {
-    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
-    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
+    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, updateWhenZooming: false, keepBuffer: 3, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
+    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, updateWhenZooming: false, keepBuffer: 3, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
   } else {
-    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
+    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, updateWhenZooming: false, keepBuffer: 3, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
     // Charts+ look when zoomed out: flat cream land on grey-blue sea.
     addLand(map, { land: "#f3eed9", borders: "#9a9a9a" }).then(l => {
       land = l;
@@ -318,7 +348,7 @@ export function basemap(map, style = "charts") {
       map.on("zoomend", vis); vis();
     }).catch(() => {});
   }
-  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, className: "bm-labels" });
+  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, updateWhenZooming: false, className: "bm-labels" });
   const group = L.layerGroup(layers).addTo(map);
   return {
     group, labels,

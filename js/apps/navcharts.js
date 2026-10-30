@@ -6,7 +6,7 @@ import { getFlight } from "../core/flight.js";
 
 const HOME = "https://charts.navigraph.com/";
 
-export default { mount: root => new NavCharts(root) };
+export default { mount: (root, ctx, args) => { const app = new NavCharts(root); if (args) app.show(args); return app; } };
 
 class NavCharts {
   constructor(root) {
@@ -29,7 +29,11 @@ class NavCharts {
     on(root, "click", "[data-icao]", (e, b) => { navigator.clipboard?.writeText(b.dataset.icao).catch(() => {}); toast(`${b.dataset.icao} copied – paste it into Navigraph's search`); });
     this.show();
   }
-  show() {
+  show(args) {
+    if (args?.icao) {
+      navigator.clipboard?.writeText(args.icao).catch(() => {});
+      toast(`${args.icao} copied – paste it into Navigraph's search`);
+    }
     const f = getFlight();
     const aps = f ? [f.orig, f.dest, ...(f.altns || [])].filter(Boolean) : [];
     $(".apts", this.root).innerHTML = aps.map(a => `<button data-icao="${a.icao}">${a.icao}</button>`).join("");

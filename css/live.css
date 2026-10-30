@@ -33,7 +33,7 @@
 .ownship svg { display: block; transition: transform .25s linear; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
 
 /* Enroute live data strip */
-.fd-own { position: absolute; left: 124px; bottom: 74px; z-index: 600; display: flex; align-items: stretch; border-radius: 12px; overflow: hidden; background: rgba(18,18,22,.86); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.fd-own { position: absolute; left: 124px; bottom: 74px; z-index: 600; display: flex; align-items: stretch; border-radius: 12px; overflow: hidden; background: rgba(18,18,22,.93); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
 .fd-own.hidden { display: none; }
 .fd-own > div { padding: 6px 14px; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.1); min-width: 74px; }
 .fd-own small { font-size: 10px; font-weight: 700; color: #8e8e93; letter-spacing: .5px; }
@@ -59,7 +59,7 @@
 .charts.night .c-amm-map { background: #17191c; }
 .c-amm-bar { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 700; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .c-amm-bar > * { pointer-events: auto; }
-.c-amm-bar .srch { display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 40px; border-radius: 10px; background: rgba(27,29,37,.9); color: #9a9eaa; backdrop-filter: blur(10px); }
+.c-amm-bar .srch { display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 40px; border-radius: 10px; background: rgba(27,29,37,.94); color: #9a9eaa; }
 .c-amm-bar .srch input { width: 92px; border: 0; background: none; color: #fff; font-size: 16px; font-weight: 700; text-transform: uppercase; outline: none; }
 .c-amm-bar .chips { flex: 1; display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
 .c-amm-bar .chips::-webkit-scrollbar { display: none; }

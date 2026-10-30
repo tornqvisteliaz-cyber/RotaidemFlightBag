@@ -221,7 +221,8 @@ class ChartsApp {
       <button data-m="import">Import charts (PDF / image)…</button>
       <button data-m="night">${this.night ? "Day mode" : "Night mode"}</button>
       <button data-m="simbrief">Reload flight from SimBrief</button>
-      <button data-m="ng">${ng ? "Navigraph account…" : "Connect Navigraph (Settings)"}</button>
+      <button data-m="ngweb">Navigraph Charts${this.icao ? " – " + esc(this.icao) : ""}</button>
+      ${ng ? `<button data-m="ng">Navigraph developer account…</button>` : ""}
       <button data-m="home">Close Charts</button></div>`, { side: "left", width: 290 });
     on(p.el, "click", "[data-m]", async (e, b) => {
       closePopovers();
@@ -232,7 +233,8 @@ class ChartsApp {
       if (m === "import") this.importDialog();
       if (m === "night") this.act("night");
       if (m === "simbrief") fetchSimbrief().then(() => toast("Flight updated from SimBrief")).catch(err => toast(err.message));
-      if (m === "ng") ng ? this.ngAccount() : this.ctx.open("settings", { section: "navigraph" });
+      if (m === "ng") this.ngAccount();
+      if (m === "ngweb") this.ctx.open("navcharts", { icao: this.icao });
       if (m === "home") this.ctx.home();
     });
   }
@@ -329,9 +331,8 @@ class ChartsApp {
     const notams = cat === "GEN" ? this.airportNotams() : [];
     const list = this.index.filter(c => c.cat === cat);
     const rwys = [...new Set(list.flatMap(c => c.runways))].sort();
-    const ngNote = !NG.isConfigured()
-      ? `<div class="c-note">Connect Navigraph in Settings to load Jeppesen ${CAT_NAMES[cat]} charts, or import your own PDF charts from the MENU.</div>`
-      : !list.some(c => c.source === "navigraph") ? `<div class="c-note">No Navigraph charts loaded – sign in from MENU › Navigraph account.</div>` : "";
+    const ngNote = list.some(c => c.source === "navigraph") ? ""
+      : `<button class="c-ngbtn" data-ngweb><b>N</b><span>Open ${esc(this.icao)} ${CAT_NAMES[cat]} in Navigraph Charts<small>Sign in with your Navigraph account</small></span><em>›</em></button>`;
     const body = html(`<div class="c-pop list">
       <header><b>${esc(this.icao)}</b> · ${CAT_NAMES[cat]} <span class="dim">${list.length} chart${list.length === 1 ? "" : "s"}</span></header>
       ${rwys.length ? `<div class="chips"><button class="on" data-rw="">ALL</button>${rwys.map(r => `<button data-rw="${esc(r)}">${esc(r)}</button>`).join("")}</div>` : ""}
@@ -340,6 +341,7 @@ class ChartsApp {
       ${ngNote}</div>`);
     const p = popover(anchor, body, { side: this.mode === "ad" && anchor.closest(".c-right") ? "left" : "bottom", width: 460 });
     on(p.el, "click", "[data-id]", (e, b) => { closePopovers(); this.display(this.index.find(c => c.id === b.dataset.id)); });
+    on(p.el, "click", "[data-ngweb]", () => { closePopovers(); this.ctx.open("navcharts", { icao: this.icao }); });
     on(p.el, "click", "[data-rw]", (e, b) => {
       $$("[data-rw]", p.el).forEach(x => x.classList.toggle("on", x === b));
       $$(".row", p.el).forEach(r => { r.style.display = !b.dataset.rw || r.dataset.rws.split(" ").includes(b.dataset.rw) ? "" : "none"; });

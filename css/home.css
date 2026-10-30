@@ -147,3 +147,14 @@ body.fullscreen #home { padding-left: 7vw; padding-right: 7vw; }
 .ngc iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .ngc-hint { padding: 7px 14px; font-size: 12px; color: #6d6d72; background: #f2f2f7; border-top: .5px solid #d1d1d6; }
 .ngc-hint .sf { width: 12px; height: 12px; }
+
+/* Navigraph entry points */
+.c-ngbtn { display: flex; align-items: center; gap: 12px; width: calc(100% - 24px); margin: 10px 12px 12px; padding: 11px 14px; border: 0; border-radius: 12px; background: #0b2a52; color: #fff; text-align: left; cursor: pointer; }
+.c-ngbtn b { width: 34px; height: 34px; border-radius: 9px; background: #fff; color: #0b2a52; display: grid; place-items: center; font: 900 20px Arial; flex: none; }
+.c-ngbtn span { flex: 1; font-size: 14px; font-weight: 600; }
+.c-ngbtn small { display: block; font-weight: 400; font-size: 12px; opacity: .7; }
+.c-ngbtn em { font-style: normal; font-size: 22px; opacity: .6; }
+.set .nghero { display: flex; gap: 16px; align-items: flex-start; }
+.set .nglogo { width: 56px; height: 56px; border-radius: 13px; background: #0b2a52; color: #fff; display: grid; place-items: center; font: 900 30px Arial; flex: none; }
+.set .nghero b { font-size: 19px; }
+.set .nghero p { color: #3c3c43; line-height: 1.45; margin: 6px 0 12px; }

@@ -351,7 +351,8 @@ class EnrouteApp {
 
   mapTypePicker(anchor) {
     const ng = NG.isConfigured() && settings().navigraphTiles;
-    const p = popover(anchor, `<div class="fd-pop list"><header>Map</header>${Object.entries(MAP_TYPES).map(([k, t]) => `<button data-m="${k}" class="${k === this.opts.mapType ? "on" : ""}"><b>${k}</b><span>${t.ng ? (ng ? "Navigraph enroute chart" : "Terrain map · Navigraph chart when connected") : t.base === "fd" ? "Shaded relief" : "Clean light map"}</span></button>`).join("")}</div>`, { side: "right", width: 300 });
+    const p = popover(anchor, `<div class="fd-pop list"><header>Map</header>${Object.entries(MAP_TYPES).map(([k, t]) => `<button data-m="${k}" class="${k === this.opts.mapType ? "on" : ""}"><b>${k}</b><span>${t.ng ? (ng ? "Navigraph enroute chart" : "Terrain map · Navigraph chart when connected") : t.base === "fd" ? "Shaded relief" : "Clean light map"}</span></button>`).join("")}<button data-ngweb><b>Navigraph Charts</b><span>Navigraph's own map and charts (your account)</span></button></div>`, { side: "right", width: 300 });
+    on(p.el, "click", "[data-ngweb]", () => { closePopovers(); this.ctx.open("navcharts", { icao: (this.apt || getFlight()?.orig)?.icao }); });
     on(p.el, "click", "[data-m]", (e, b) => {
       closePopovers();
       this.opts.mapType = b.dataset.m;

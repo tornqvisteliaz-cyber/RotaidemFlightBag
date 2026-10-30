@@ -109,6 +109,7 @@ class SettingsApp {
       setSetting("fleet", fleet); toast("Fleet saved");
     }
     if (a === "pair") connectSheet();
+    if (a === "ngweb") this.ctx.open("navcharts");
     if (a === "at") { setSetting("assistiveTouch", !this.atOn()); this.render(); }
     if (a === "demo") { setDemo(!settings().simDemo); this.render(); }
     if (a === "resetlayout") { resetLayout(); toast("Home Screen layout reset"); }
@@ -224,7 +225,11 @@ class SettingsApp {
   navigraph() {
     const s = settings();
     const configured = NG.isConfigured();
-    const out = this.group("Developer client", [
+    const intro = `<div class="card pad nghero"><span class="nglogo">N</span><div><b>Navigraph Charts</b>
+      <p>Use your Navigraph subscription in the Flight Bag: open the Navigraph app and sign in with your normal Navigraph account. Charts and the Navigraph map then work on this PC and on your iPad.</p>
+      <button class="ios-btn" data-do="ngweb">Open Navigraph</button></div></div>
+      <p class="foot">The deeper integration below (Jeppesen charts inside Charts, Navigraph maps in Enroute) needs a developer client from the Navigraph partner programme. Regular subscribers don't have one – that is why “Connect Navigraph” fails without it.</p>`;
+    const out = intro + this.group("Advanced: developer client", [
       this.row("Client ID", this.input("navigraphClientId", s.navigraphClientId, "from Navigraph")),
       this.row("Client secret", this.input("navigraphClientSecret", s.navigraphClientSecret, "from Navigraph", "password")),
       this.row("Enroute chart tiles", this.sw("navigraphTiles", s.navigraphTiles), "Jeppesen-style IFR High/Low, VFR and World maps in Enroute and Charts. Your client must allow the “tiles” scope; sign in again after changing."),
