@@ -14,6 +14,7 @@ import { airportDiagram, airportInfo, PAGE_W, PAGE_H } from "../core/genchart.js
 import * as M from "../core/map.js";
 import { fetchGround, groundLayer } from "../core/amm.js";
 import { simState, onSim } from "../core/sim.js";
+import { lidoStatus, lidoIndex, lidoPageImages } from "../core/lido.js";
 
 const CATS = ["GEN", "SID", "STAR", "APPR", "TAXI"];
 const CAT_NAMES = { GEN: "GEN", SID: "SID", STAR: "STAR", APPR: "APPR", TAXI: "TAXI" };
@@ -155,7 +156,7 @@ class ChartsApp {
         <button class="c-tab apt" data-act="airports"><b class="mag">${esc(this.icao || "-")}</b><b class="mag sm">${esc(this.ap?.iata || "")}</b><span>${esc(this.role === "OTHER" ? "AD" : this.role || "")}</span></button>
         ${ch ? `<button class="c-tab chart" data-cat="${ch.cat}"><b>${esc(CAT_NAMES[ch.cat])}</b><span>[${esc(ch.index || "—")}]</span></button>` : ""}
         <div class="c-title">${ch ? esc(ch.title || ch.name) : this.icao ? `<span class="dim">${esc(this.ap?.name || "")}</span>` : ""}</div>
-        ${ch?.source === "navigraph" ? `<div class="c-src">Navigraph · Jeppesen</div>` : ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
+        ${ch?.source === "navigraph" ? `<div class="c-src">Navigraph · Jeppesen</div>` : ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch?.source === "lido" ? `<div class="c-src">Lido · MSFS 2024</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
     }
   }
 
@@ -263,6 +264,18 @@ class ChartsApp {
           if (ng && this.icao === icao) this.index.push(...ng.map(c => ({ ...c, short: shortName(c.name) })));
         }
       } catch (e) { console.warn(e); toast("Navigraph: " + e.message); }
+      // Lido charts from MSFS 2024 (via the in-sim Flight Bag Lido panel)
+      lidoStatus().then(async st => {
+        if (!st.bridge || this.icao !== icao) return;
+        try {
+          const lido = await lidoIndex(icao);
+          if (this.icao !== icao) return;
+          this.index.push(...lido);
+          this.renderRight();
+          if (lido.length && (!this.chart || this.chart.source === "gen" || this.chart.source === "amm")) this.autoSelect(this.role === "TO" ? "STAR" : this.role === "FROM" ? "SID" : "TAXI", false);
+          toast(`${lido.length} Lido charts from MSFS 2024`);
+        } catch (e) { toast("Lido: " + e.message); }
+      });
       this.renderRight();
     } else this.setMode("ad");
     if (!this.chart || this.chart.icao !== icao) {
@@ -322,7 +335,7 @@ class ChartsApp {
     const body = html(`<div class="c-pop list">
       <header><b>${esc(this.icao)}</b> · ${CAT_NAMES[cat]} <span class="dim">${list.length} chart${list.length === 1 ? "" : "s"}</span></header>
       ${rwys.length ? `<div class="chips"><button class="on" data-rw="">ALL</button>${rwys.map(r => `<button data-rw="${esc(r)}">${esc(r)}</button>`).join("")}</div>` : ""}
-      <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
+      <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : c.source === "lido" ? `<span class="tag lido">LIDO</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
       ${notams.length ? `<div class="c-notams"><h5>NOTAM <span>${notams.length}</span></h5>${notams.map(n => `<article><b>${esc(n.id || "")}</b><p>${esc(n.text)}</p></article>`).join("")}</div>` : ""}
       ${ngNote}</div>`);
     const p = popover(anchor, body, { side: this.mode === "ad" && anchor.closest(".c-right") ? "left" : "bottom", width: 460 });
@@ -360,6 +373,15 @@ class ChartsApp {
       } else if (chart.source === "local") {
         ({ w, h } = await renderFile(chart.rec, rot));
         rot.classList.toggle("invert", this.night);
+      } else if (chart.source === "lido") {
+        const urls = await lidoPageImages(chart, this.night);
+        if (!urls.length) throw new Error("No image for this Lido chart");
+        const imgs = await Promise.all(urls.map(loadImg));
+        rot.innerHTML = "";
+        const col = document.createElement("div"); col.className = "pdf-pages";
+        imgs.forEach(i => col.append(i));
+        rot.append(col);
+        w = Math.max(...imgs.map(i => i.naturalWidth)); h = imgs.reduce((a, i) => a + i.naturalHeight, 0) + (imgs.length - 1) * 12;
       }
       if (this.chart !== chart) return;
       empty.style.display = "none";

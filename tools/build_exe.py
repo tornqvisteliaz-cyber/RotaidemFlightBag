@@ -27,7 +27,7 @@ data = ["index.html", "manifest.webmanifest", "sw.js", "css", "js", "data", "ass
 args = [
     sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--windowed",
     "--name", "Rotaidem Flight Bag", "--paths", ROOT,
-    "--hidden-import", "serve", "--hidden-import", "sim_bridge",
+    "--hidden-import", "serve", "--hidden-import", "sim_bridge", "--hidden-import", "lido_bridge",
 ]
 try:
     import SimConnect  # noqa: F401

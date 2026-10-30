@@ -177,3 +177,5 @@
 .c-notams article { margin: 0 12px 8px; padding: 9px 12px; border-left: 3px solid #f2d22e; background: #23252e; border-radius: 0 8px 8px 0; }
 .c-notams b { font-size: 12px; color: #f2d22e; }
 .c-notams p { margin: 4px 0 0; font: 12px/1.4 var(--mono); color: #d8dae0; white-space: pre-wrap; }
+
+.c-pop .row .tag.lido { background: #0b3d91; color: #cfe0ff; }

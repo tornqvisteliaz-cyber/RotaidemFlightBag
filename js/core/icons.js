@@ -84,6 +84,10 @@ export const APP_ICONS = {
      <rect x="40" y="30" width="30" height="14" rx="2" fill="#f3e3c3"/>
      <path d="M47 60 L62 54 L56 66 L54 60Z" fill="#f3e3c3"/>`,
     grad("gL", "#f4d29c", "#d99b4c")),
+  navcharts: svg(
+    `<rect width="100" height="100" fill="url(#gn)"/>
+     <path d="M30 74 V26 h7 l26 34 V26 h7 v48 h-7 L37 40 v34z" fill="#fff"/>`,
+    grad("gn", "#123a6b", "#0b1f3a")),
   settings: svg(
     `<rect width="100" height="100" fill="url(#gg)"/>
      <g transform="translate(50 50)">

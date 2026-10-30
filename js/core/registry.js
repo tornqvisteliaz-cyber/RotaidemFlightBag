@@ -19,6 +19,9 @@ export const APPS = [
     subtitle: "SimBrief OFP & dispatch", load: () => import("../apps/briefing.js"),
     desc: "Import your latest SimBrief OFP and read it like on the line: summary, full OFP, navlog, fuel and weights, weather, ATC flight plan and maps. Dispatch new flights through SimBrief or create an offline flight.",
     whatsNew: "In-app OFP generation through the SimBrief API." },
+  { id: "navcharts", name: "Navigraph", vendor: "Navigraph", category: "Navigation", size: "Web", version: "Web", bar: "dark", splash: "#0b1f3a",
+    subtitle: "Navigraph Charts with your account", load: () => import("../apps/navcharts.js"),
+    desc: "Navigraph's own chart app inside the Flight Bag. Sign in with your normal Navigraph account (Charts subscription) – no developer client needed. Your flight's airports are one tap away." },
   { id: "weather", name: "Weather", vendor: "Rotaidem Avionics", category: "Weather", size: "6.1 MB", version: "1.9", bar: "light", splash: "#1758c9",
     subtitle: "METAR, TAF & radar", load: () => import("../apps/weather.js"),
     desc: "Decoded METARs with flight categories, crosswind for every runway, TAFs and a live radar map for your departure, destination, alternates and favourites." },
@@ -48,14 +51,26 @@ export const APPS = [
 export const byId = Object.fromEntries(APPS.map(a => [a.id, a]));
 
 const DEFAULT = {
-  grid: ["charts", "enroute", "opt", "briefing", "weather", "checklist", "scratchpad", "clock", "appstore"],
+  grid: ["charts", "enroute", "opt", "briefing", "navcharts", "weather", "checklist", "scratchpad", "clock", "appstore"],
   dock: ["charts", "enroute", "opt", "briefing", "library", "settings"],
 };
 
 export function layout() {
-  const l = kv.get("home.layout", null) || structuredClone(DEFAULT);
+  const saved = kv.get("home.layout", null);
+  const l = saved || structuredClone(DEFAULT);
   l.grid = l.grid.filter(id => byId[id]);
   l.dock = l.dock.filter(id => byId[id]);
+  // Built-in apps added in an update appear once on existing home screens
+  // (apps the user removed stay removed: they are remembered in `known`).
+  if (saved) {
+    const known = new Set(saved.known || [...saved.grid, ...saved.dock, "appstore", "settings", "library", "converter", "logbook"]);
+    const fresh = DEFAULT.grid.filter(id => !known.has(id) && !l.grid.includes(id) && !l.dock.includes(id));
+    if (fresh.length || !saved.known) {
+      l.grid.push(...fresh);
+      l.known = [...new Set([...known, ...DEFAULT.grid, ...DEFAULT.dock])];
+      kv.set("home.layout", l);
+    }
+  }
   return l;
 }
 export const isInstalled = id => { const l = layout(); return l.grid.includes(id) || l.dock.includes(id); };

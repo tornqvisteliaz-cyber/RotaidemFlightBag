@@ -133,3 +133,17 @@
 /* fullscreen on smaller iPads: let rows follow the available space */
 body.fullscreen .hs { grid-auto-rows: min(138px, 15.5vh); column-gap: 4vw; }
 body.fullscreen #home { padding-left: 7vw; padding-right: 7vw; }
+
+/* Navigraph Charts (embedded) */
+.ngc { position: absolute; inset: 0; display: flex; flex-direction: column; background: #f2f2f7; padding-top: var(--sb-h); }
+.ngc-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #fff; border-bottom: .5px solid #d1d1d6; color: #000; }
+.ngc-bar .t { flex: 1; display: flex; flex-direction: column; }
+.ngc-bar .t b { font-size: 16px; }
+.ngc-bar .t span { font-size: 12px; color: #8e8e93; }
+.ngc-bar .apts { display: flex; gap: 6px; }
+.ngc-bar .apts button { border: 0; border-radius: 8px; padding: 6px 10px; background: rgba(10,132,255,.12); color: #0a84ff; font-weight: 700; cursor: pointer; }
+.ngc-bar > button { width: 36px; height: 36px; border: 0; border-radius: 18px; background: #f2f2f7; color: #0a84ff; display: grid; place-items: center; cursor: pointer; }
+.ngc-bar .sf { width: 18px; height: 18px; }
+.ngc iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+.ngc-hint { padding: 7px 14px; font-size: 12px; color: #6d6d72; background: #f2f2f7; border-top: .5px solid #d1d1d6; }
+.ngc-hint .sf { width: 12px; height: 12px; }

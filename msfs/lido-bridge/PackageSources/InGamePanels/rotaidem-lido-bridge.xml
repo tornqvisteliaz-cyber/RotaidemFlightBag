@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<SimBase.Document Type="InGamePanels" version="1,0">
+	<Filename>rotaidem-lido-bridge.spb</Filename>
+	<InGamePanels.InGamePanelDefinition id="ROTAIDEM_LIDO_BRIDGE" Name="Flight Bag Lido" url="html_ui/InGamePanels/RotaidemLidoBridge/RotaidemLidoBridge.html" resizeDirections="both" minWidth="22" minHeight="28" defaultWidth="24" defaultHeight="40" defaultTop="30.000" defaultRight="3.000" icon="ICON_TOOLBAR_ROTAIDEM_LIDO" buttonVisible="true" />
+</SimBase.Document>

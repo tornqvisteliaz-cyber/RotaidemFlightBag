@@ -1,0 +1,12 @@
+rotaidem-lido-bridge { display: block; width: 100%; height: 100%; }
+.lb { padding: 10px 14px; color: #e8eaef; font-family: Roboto, Arial, sans-serif; font-size: 14px; }
+.lb .lead { margin: 0 0 10px; color: #aeb4c0; font-size: 12.5px; line-height: 1.4; }
+.lb .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.1); }
+.lb .row span { color: #aeb4c0; }
+.lb .ok { color: #4cd964; }
+.lb .warn { color: #ffcc00; }
+.lb .err { min-height: 16px; margin: 6px 0; color: #ff6b6b; font-size: 12px; }
+.lb .test { display: flex; gap: 8px; margin-top: 6px; }
+.lb .test input { width: 80px; padding: 6px 8px; background: #1b1f27; border: 1px solid #3a404c; color: #fff; text-transform: uppercase; }
+.lb .test button { padding: 6px 14px; background: #2e9d8e; color: #fff; border: 0; cursor: pointer; }
+.lb pre { white-space: pre-wrap; font-size: 11.5px; color: #cfd3dc; margin: 8px 0 0; max-height: 160px; overflow: auto; }

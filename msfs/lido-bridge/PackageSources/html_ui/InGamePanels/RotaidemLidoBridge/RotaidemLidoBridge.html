@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Flight Bag Lido</title>
+	<meta charset="utf-8" />
+	<link rel="stylesheet" href="/SCSS/common.css" />
+	<link rel="stylesheet" href="RotaidemLidoBridge.css" />
+	<script type="text/javascript" src="/JS/coherent.js"></script>
+	<script type="text/javascript" src="/JS/common.js"></script>
+	<script type="text/javascript" src="/JS/buttons.js"></script>
+	<script type="text/javascript" src="/JS/dataStorage.js"></script>
+	<script type="text/javascript" src="/JS/simvar.js"></script>
+	<script type="text/javascript" src="/JS/Services/ToolBarPanels.js"></script>
+	<script type="text/javascript" src="/Pages/VCockpit/Instruments/Shared/BaseInstrument.js"></script>
+	<link rel="import" href="/templates/ingameUi/ingameUi.html" />
+	<link rel="import" href="/templates/ingameUiHeader/ingameUiHeader.html" />
+	<script type="text/javascript" src="RotaidemLidoBridge.js"></script>
+</head>
+<body class="border-box">
+	<rotaidem-lido-bridge>
+		<!-- panel-id must match the id in InGamePanels/rotaidem-lido-bridge.xml -->
+		<ingame-ui id="RotaidemLidoBridgePanel" panel-id="ROTAIDEM_LIDO_BRIDGE" title="Flight Bag · Lido" class="ingameUiFrame panelInvisible" content-fit="true" min-width="300" min-height="300">
+			<section class="lb">
+				<p class="lead">Shares the sim's Lido charts with your Rotaidem Flight Bag (PC and iPad). Keep this panel open while you fly.</p>
+				<div class="row"><span>Flight Bag</span><b id="lb-server">searching…</b></div>
+				<div class="row"><span>Lido charts</span><b id="lb-sim">starting…</b></div>
+				<div class="row"><span>Requests served</span><b id="lb-served">0</b></div>
+				<div class="err" id="lb-error"></div>
+				<div class="test"><input id="lb-icao" value="KSEA" maxlength="4" /><button id="lb-test">Test</button></div>
+				<pre id="lb-out"></pre>
+			</section>
+		</ingame-ui>
+	</rotaidem-lido-bridge>
+</body>
+</html>

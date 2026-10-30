@@ -45,6 +45,22 @@ Allow Python through the Windows firewall for private networks if the iPad can't
 
 **Hosted instead of local:** publish the folder with GitHub Pages (Settings › Pages › deploy from branch). The iPad can then open the HTTPS address from anywhere, and the service worker caches the app and airport database for offline use.
 
+## Lido charts from MSFS 2024
+
+MSFS 2024 ships Lido charts, but the sim only exposes them to code running inside the simulator (the SDK's `ChartsClient`, see the [MSFS 2024 SDK charts docs](https://microsoft.github.io/msfs-avionics-mirror/2024/docs/framework-systems/charts/builtin-chart-providers)). The **Flight Bag Lido** toolbar panel (`msfs/lido-bridge`) runs in the sim and hands the charts to the Flight Bag over the PC app:
+
+1. Install the panel: double-click `build-msfs-panel.bat` (needs the MSFS 2024 SDK; it builds the package and copies it to your Community folder).
+2. Start the Flight Bag on the sim PC (`Rotaidem Flight Bag.exe` or `Start EFB.bat`).
+3. In MSFS 2024 open **Flight Bag Lido** from the toolbar and keep it open. Use its **Test** button to check an airport.
+4. In Charts, airports now list Lido charts (tagged LIDO) next to Navigraph, imported PDFs and the generated pages – on the PC and on the iPad.
+
+Charts are relayed in memory only and never saved to disk; they are for use with your own copy of MSFS 2024. This is experimental: the panel and the server relay are built from the SDK's documented chart API, but chart image export depends on the sim allowing its chart images to be read back.
+
+## Navigraph
+
+- **Navigraph app (recommended):** Navigraph's own chart web app inside the Flight Bag. Sign in with your normal Navigraph account. If the login doesn't stick inside the app (some browsers block it), use *Open in a new window*.
+- **Built-in integration in Charts/Enroute:** needs a client ID and secret from the [Navigraph developer programme](https://navigraph.com/partners) – regular subscribers don't have these, which is why “Connect Navigraph” can't work without one.
+
 ## Live aircraft (SimConnect / X-Plane)
 
 The PC server reads your aircraft from the simulator and streams it to the EFB (and to the iPad over Wi-Fi) four times a second.

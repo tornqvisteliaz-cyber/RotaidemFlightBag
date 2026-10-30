@@ -21,8 +21,10 @@ import socket
 import socketserver
 import sys
 import time
+import urllib.parse
 import webbrowser
 
+import lido_bridge
 import sim_bridge
 
 DEFAULT_PORT = 8642
@@ -52,20 +54,72 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=ROOT, **kw)
 
+    # Endpoints the in-sim Lido panel calls from the sim's coui:// origin.
+    CORS_PATHS = ("/lan.json", "/lido/job", "/lido/result")
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache")
+        if self.path.split("?")[0] in self.CORS_PATHS:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         super().end_headers()
+
+    def send_json(self, obj, status=200):
+        body = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
+
+    def do_POST(self):
+        if self.path.split("?")[0] == "/lido/result":
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                lido_bridge.deliver(json.loads(self.rfile.read(n).decode() or "{}"))
+            except ValueError:
+                return self.send_json({"ok": False}, 400)
+            return self.send_json({"ok": True})
+        self.send_error(404)
+
+    def do_lido(self, path, q):
+        if path == "/lido/status":
+            return self.send_json(lido_bridge.status())
+        if path == "/lido/job":
+            job = lido_bridge.next_job()
+            if job is None:
+                self.send_response(204)
+                self.end_headers()
+                return
+            return self.send_json(job)
+        if path == "/lido/index":
+            return self.send_json(lido_bridge.request({"kind": "index", "icao": q.get("icao", [""])[0].upper(), "provider": "LIDO"}))
+        if path == "/lido/pages":
+            return self.send_json(lido_bridge.request({"kind": "pages", "guid": q.get("guid", [""])[0]}))
+        if path == "/lido/image":
+            res = lido_bridge.request({"kind": "image", "url": q.get("url", [""])[0]}, timeout=60)
+            png = lido_bridge.image_bytes(res) if res.get("ok") else None
+            if not png:
+                return self.send_json(res if not res.get("ok") else {"ok": False, "error": "no image"}, 502)
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(png)))
+            self.end_headers()
+            self.wfile.write(png)
+            return
+        self.send_error(404)
 
     def do_GET(self):
         if self.path.split("?")[0] == "/lan.json":
-            body = json.dumps({"ips": lan_ips(), "port": self.server.server_port}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
+            return self.send_json({"ips": lan_ips(), "port": self.server.server_port})
         path = self.path.split("?")[0]
+        if path.startswith("/lido/"):
+            return self.do_lido(path, urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query))
         if path == "/sim/state":
             body = json.dumps(sim_bridge.state()).encode()
             self.send_response(200)

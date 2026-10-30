@@ -9,3 +9,5 @@ dist/
 *.spec
 assets/app.ico
 build.log
+msfs/lido-bridge/Packages/
+msfs/lido-bridge/_PackageInt/
