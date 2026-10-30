@@ -1,0 +1,17 @@
+{
+  "name": "Rotaidem Flight Bag",
+  "short_name": "Flight Bag",
+  "description": "Electronic flight bag for flight simulation: charts, enroute map, performance, SimBrief briefing.",
+  "start_url": "./?standalone",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

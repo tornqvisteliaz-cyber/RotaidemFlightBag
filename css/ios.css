@@ -1,0 +1,217 @@
+/* ------------------------------------------------------------------
+   iPad shell: device frame, status bar, home screen, app windows
+   ------------------------------------------------------------------ */
+:root {
+  --screen-w: 1180px;
+  --screen-h: 820px;
+  --sb-h: 24px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, "Courier New", monospace;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c0f; font-family: var(--font); color: #fff; }
+body { -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; touch-action: none; }
+input, textarea, select { user-select: text; -webkit-user-select: text; font-family: inherit; }
+button { font-family: inherit; color: inherit; }
+
+#stage {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  background: radial-gradient(1200px 800px at 50% 40%, #23262d 0%, #0b0c0f 70%);
+}
+#ipad {
+  position: absolute; left: 50%; top: 50%; padding: 20px; border-radius: 52px;
+  background: linear-gradient(145deg, #3a3d44, #16171a 40%, #232428);
+  box-shadow: 0 0 0 2px #4b4e55, 0 40px 120px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.08);
+  transform-origin: center center;
+}
+#ipad::before { /* front camera */
+  content: ""; position: absolute; left: 50%; top: 8px; width: 7px; height: 7px; margin-left: -3px;
+  border-radius: 50%; background: #0d1018; box-shadow: inset 0 0 2px #3b4a6b;
+}
+#screen {
+  position: relative; width: var(--screen-w); height: var(--screen-h);
+  border-radius: 20px; overflow: hidden; background: #000; isolation: isolate;
+  container-type: size;
+}
+
+/* Fullscreen mode (running on an actual tablet / installed as PWA) */
+body.fullscreen #stage { background: #000; }
+body.fullscreen #ipad { padding: 0; border-radius: 0; background: none; box-shadow: none; left: 0; top: 0; }
+body.fullscreen #ipad::before { display: none; }
+body.fullscreen #screen { border-radius: 0; width: 100vw; height: 100vh; }
+
+/* ---------------- wallpaper ---------------- */
+#wallpaper {
+  position: absolute; inset: 0; z-index: 0;
+  background:
+    radial-gradient(120% 90% at 0% 0%, #2a7bd6 0%, transparent 55%),
+    radial-gradient(90% 80% at 100% 100%, #0c4c55 0%, transparent 60%),
+    radial-gradient(70% 60% at 70% 30%, #5fd0c4 0%, transparent 60%),
+    linear-gradient(160deg, #1d63b8 0%, #36a7a8 50%, #0d5a63 100%);
+  transition: transform .45s cubic-bezier(.2,.8,.2,1), filter .45s;
+}
+#wallpaper::after {
+  content: ""; position: absolute; inset: 0; opacity: .55;
+  background:
+    radial-gradient(160% 60% at 20% 120%, transparent 45%, rgba(255,255,255,.35) 45.4%, transparent 46.5%),
+    radial-gradient(160% 60% at 30% 125%, transparent 45%, rgba(255,255,255,.18) 45.3%, transparent 46.2%),
+    radial-gradient(140% 70% at 85% -20%, transparent 50%, rgba(255,255,255,.22) 50.3%, transparent 51.5%);
+}
+#screen.app-open #wallpaper { transform: scale(1.06); filter: blur(6px) brightness(.8); }
+
+/* ---------------- status bar ---------------- */
+#statusbar {
+  position: absolute; left: 0; right: 0; top: 0; height: var(--sb-h); z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 22px 0 26px; font-size: 13.5px; font-weight: 600; letter-spacing: .1px;
+  color: #fff; pointer-events: none; transition: color .25s;
+}
+#statusbar.dark { color: #000; }
+#statusbar .sb-left { display: flex; gap: 7px; }
+#statusbar .sb-left .date { font-weight: 600; }
+#statusbar .sb-right { display: flex; align-items: center; gap: 6px; }
+#statusbar svg { display: block; fill: currentColor; }
+#statusbar .batt { display: flex; align-items: center; gap: 4px; }
+#statusbar .batt-body { position: relative; width: 25px; height: 12px; border: 1px solid currentColor; border-radius: 3.5px; opacity: .9; padding: 1px; }
+#statusbar .batt-body::after { content: ""; position: absolute; right: -3.5px; top: 3.5px; width: 2px; height: 4px; border-radius: 0 1px 1px 0; background: currentColor; opacity: .6; }
+#statusbar .batt-fill { height: 100%; border-radius: 1.5px; background: currentColor; }
+#statusbar .batt-fill.low { background: #ff3b30; }
+
+/* ---------------- home screen ---------------- */
+#home {
+  position: absolute; inset: 0; z-index: 1; padding: calc(var(--sb-h) + 26px) 54px 0;
+  display: flex; gap: 40px;
+  transition: transform .45s cubic-bezier(.2,.8,.2,1), opacity .35s;
+}
+#screen.app-open #home { transform: scale(.92); opacity: 0; pointer-events: none; }
+
+.widgets { width: 320px; flex: none; display: flex; flex-direction: column; gap: 22px; }
+.widget {
+  border-radius: 24px; padding: 16px 18px; color: #fff;
+  background: rgba(20, 30, 45, .38); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  box-shadow: 0 6px 24px rgba(0,0,0,.18);
+}
+.widget h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; opacity: .75; }
+.w-clock { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.w-clock .big { font-size: 40px; font-weight: 300; letter-spacing: -1px; font-variant-numeric: tabular-nums; line-height: 1.05; }
+.w-clock .lbl { font-size: 12px; opacity: .75; }
+.w-flight .route { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 2px; }
+.w-flight .route b { font-size: 30px; font-weight: 600; letter-spacing: .5px; }
+.w-flight .route .line { flex: 1; height: 1px; margin: 0 12px; background: rgba(255,255,255,.5); position: relative; }
+.w-flight .route .line::after { content: "✈"; position: absolute; left: 50%; top: -11px; transform: translateX(-50%); font-size: 16px; }
+.w-flight .meta { display: flex; justify-content: space-between; font-size: 12.5px; opacity: .85; }
+.w-flight .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; font-size: 12px; }
+.w-flight .grid div span { display: block; opacity: .65; font-size: 10.5px; text-transform: uppercase; }
+.w-flight .grid div b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.w-flight .empty { font-size: 14px; opacity: .85; line-height: 1.4; }
+.w-flight .empty button { margin-top: 10px; }
+
+.app-grid {
+  flex: 1; display: grid; grid-template-columns: repeat(6, 92px); grid-auto-rows: 112px;
+  justify-content: space-between; align-content: start; row-gap: 14px;
+}
+.app-icon { display: flex; flex-direction: column; align-items: center; gap: 7px; cursor: pointer; position: relative; }
+.app-icon .ic {
+  width: 74px; height: 74px; border-radius: 17px; overflow: hidden; position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25); transition: transform .15s, filter .15s;
+}
+.app-icon .ic svg { width: 100%; height: 100%; display: block; }
+.app-icon:active .ic { transform: scale(.9); filter: brightness(.8); }
+.app-icon .name { font-size: 12.5px; font-weight: 500; text-shadow: 0 1px 3px rgba(0,0,0,.45); white-space: nowrap; }
+.app-icon .badge {
+  position: absolute; top: -7px; left: 63px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px;
+  background: #ff3b30; color: #fff; font-size: 14px; font-weight: 500; display: grid; place-items: center;
+  box-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+.app-icon.running .ic::after { content: ""; }
+
+.page-dots { position: absolute; left: 0; right: 0; bottom: 128px; display: flex; justify-content: center; gap: 9px; }
+.page-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.4); }
+.page-dots i.on { background: #fff; }
+
+.dock {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 18px; padding: 12px 16px; border-radius: 30px;
+  background: rgba(225, 235, 245, .26); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 0 0 .5px rgba(255,255,255,.25) inset;
+}
+.dock .app-icon .name { display: none; }
+.dock .app-icon .ic { width: 70px; height: 70px; border-radius: 16px; }
+.dock .sep { width: 1px; height: 54px; background: rgba(255,255,255,.35); }
+
+/* ---------------- app windows ---------------- */
+#windows { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.app-window {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: auto; background: #000;
+  transform-origin: 50% 50%; will-change: transform, opacity, border-radius;
+  transition: transform .42s cubic-bezier(.2,.85,.25,1), opacity .3s, border-radius .42s;
+  display: none; contain: layout paint;
+}
+.app-window.visible { display: block; }
+.app-window.opening, .app-window.closing { border-radius: 40px; }
+.app-window > .app-root { position: absolute; inset: 0; }
+.app-window .launch {
+  position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; pointer-events: none;
+  transition: opacity .35s .1s;
+}
+.app-window .launch.gone { opacity: 0; }
+
+/* app switcher */
+#screen.switcher #windows { pointer-events: auto; background: rgba(0,0,0,.25); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+#screen.switcher .app-window { display: block; border-radius: 32px; box-shadow: 0 20px 60px rgba(0,0,0,.45); cursor: pointer; }
+#screen.switcher .app-window > .app-root { pointer-events: none; }
+.switcher-label {
+  position: absolute; z-index: 20; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600;
+  pointer-events: none; transform: translateX(-50%); text-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.switcher-label .mini { width: 26px; height: 26px; border-radius: 7px; overflow: hidden; }
+.switcher-empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 17px; opacity: .8; z-index: 20; }
+
+/* home indicator */
+#home-indicator {
+  position: absolute; left: 50%; bottom: 0; width: 260px; height: 22px; transform: translateX(-50%);
+  z-index: 60; display: grid; place-items: center; cursor: pointer; touch-action: none;
+}
+#home-indicator span { width: 150px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.85); transition: background .25s; }
+#home-indicator.dark span { background: rgba(0,0,0,.75); }
+#screen:not(.app-open):not(.switcher) #home-indicator { opacity: 0; pointer-events: none; }
+
+/* ---------------- shared iOS controls ---------------- */
+#overlay-root { position: absolute; inset: 0; z-index: 80; pointer-events: none; }
+#overlay-root > * { pointer-events: auto; }
+.toast {
+  position: absolute; left: 50%; top: 40px; transform: translate(-50%, -20px); opacity: 0;
+  padding: 10px 18px; border-radius: 22px; font-size: 14px; font-weight: 500; max-width: 70%; text-align: center;
+  background: rgba(30,30,34,.92); color: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  transition: transform .3s cubic-bezier(.2,.9,.3,1.2), opacity .25s; pointer-events: none;
+}
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
+
+.ios-btn {
+  appearance: none; border: 0; border-radius: 10px; padding: 9px 16px; font-size: 15px; font-weight: 600;
+  background: #0a84ff; color: #fff; cursor: pointer;
+}
+.ios-btn.secondary { background: rgba(255,255,255,.18); }
+.ios-btn.small { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+.ios-btn:disabled { opacity: .45; cursor: default; }
+
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: grid; place-items: center; animation: fadeIn .2s; }
+.modal {
+  width: 540px; max-height: 86%; overflow: auto; border-radius: 14px; background: #f2f2f7; color: #000;
+  box-shadow: 0 30px 90px rgba(0,0,0,.45); animation: popIn .28s cubic-bezier(.2,.9,.3,1.1);
+}
+.modal header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: .5px solid #c6c6c8; background: #f9f9fb; position: sticky; top: 0; }
+.modal header h3 { margin: 0; font-size: 17px; }
+.modal header button { background: none; border: 0; color: #0a84ff; font-size: 17px; cursor: pointer; }
+.modal .body { padding: 16px; font-size: 15px; line-height: 1.45; }
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.94); } }
+
+.spinner { width: 28px; height: 28px; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+.spinner.dark { border-color: rgba(0,0,0,.15); border-top-color: #555; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(128,128,128,.45); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
