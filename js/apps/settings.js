@@ -17,6 +17,7 @@ const SECTIONS = [
   { group: 0, id: "connect", label: "Connect iPad", icon: G("#0a84ff", I.ipad) },
   { group: 0, id: "sim", label: "Simulator", icon: G("#34c759", I.plane) },
   { group: 0, id: "general", label: "General", icon: G("#8e8e93", I.gear) },
+  { group: 0, id: "access", label: "Accessibility", icon: G("#0a84ff", I.person) },
   { group: 0, id: "display", label: "Display & Brightness", icon: G("#0a84ff", I.sun) },
   { group: 0, id: "homescreen", label: "Home Screen & Dock", icon: G("#5e5ce6", I.grid) },
   { group: 0, id: "wallpaper", label: "Wallpaper", icon: G("#32ade6", I.wallpaper) },
@@ -108,6 +109,7 @@ class SettingsApp {
       setSetting("fleet", fleet); toast("Fleet saved");
     }
     if (a === "pair") connectSheet();
+    if (a === "at") { setSetting("assistiveTouch", !this.atOn()); this.render(); }
     if (a === "demo") { setDemo(!settings().simDemo); this.render(); }
     if (a === "resetlayout") { resetLayout(); toast("Home Screen layout reset"); }
     if (a === "clearflight") { setFlight(null); toast("Flight cleared"); }
@@ -119,6 +121,18 @@ class SettingsApp {
   }
 
   // ---- sections ----
+  atOn() { return settings().assistiveTouch ?? (matchMedia("(pointer: coarse)").matches || isStandalone()); }
+  access() {
+    return this.group("Touch", [
+      this.row("AssistiveTouch", this.sw("atUi", this.atOn()).replace('data-sw="atUi"', 'data-do="at"'), "Floating button: tap for Home, App Switcher, Control Center and Search; press and hold for Home. Drag it to any edge."),
+    ], "On an iPad with the Flight Bag added to the Home Screen, iPadOS uses the bottom-edge swipe to close the whole Flight Bag. Use AssistiveTouch, or swipe up with three fingers, to return to the Flight Bag home screen.") +
+      this.group("Gestures", [
+        this.row("Home", `<span class="dim">3-finger swipe up · AssistiveTouch · ⌘H</span>`),
+        this.row("App Switcher", `<span class="dim">Swipe up and hold on the home bar · AssistiveTouch</span>`),
+        this.row("Control Center", `<span class="dim">Tap the top-right of the status bar</span>`),
+        this.row("Search", `<span class="dim">Pull down on the Home Screen · ⌘Space</span>`),
+      ]);
+  }
   sim() {
     setTimeout(() => this.updSim(), 0);
     return `<div class="card pad simhero"><div class="simstat"><i></i><div><b id="simtitle">—</b><small id="simsub"></small></div></div>
@@ -213,6 +227,7 @@ class SettingsApp {
     const out = this.group("Developer client", [
       this.row("Client ID", this.input("navigraphClientId", s.navigraphClientId, "from Navigraph")),
       this.row("Client secret", this.input("navigraphClientSecret", s.navigraphClientSecret, "from Navigraph", "password")),
+      this.row("Enroute chart tiles", this.sw("navigraphTiles", s.navigraphTiles), "Jeppesen-style IFR High/Low, VFR and World maps in Enroute and Charts. Your client must allow the “tiles” scope; sign in again after changing."),
     ], "Navigraph's Charts API needs a client from the Navigraph developer programme (navigraph.com/partners). Changing the client requires reopening the app.");
     const acct = `<div class="card" id="ngacct">${this.row("Account", configured ? `<span class="dim">Checking…</span>` : `<span class="dim">Add a client first</span>`)}</div>`;
     setTimeout(async () => {

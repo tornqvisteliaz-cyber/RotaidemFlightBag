@@ -1,0 +1,135 @@
+/* ==================================================================
+   iPadOS home screen: widgets on the icon grid, page dots, glass dock
+   ================================================================== */
+#home { display: block; padding: calc(var(--sb-h) + 34px) 92px 0; }
+#wallpaper:not(.custom) {
+  background:
+    radial-gradient(70% 90% at 8% 30%, #1d3fb8 0%, transparent 60%),
+    radial-gradient(60% 70% at 30% 105%, #2a55d6 0%, transparent 60%),
+    radial-gradient(80% 90% at 92% 20%, #9fe3e6 0%, transparent 55%),
+    radial-gradient(70% 70% at 75% 95%, #3fb8a9 0%, transparent 60%),
+    linear-gradient(115deg, #10236e 0%, #2747c9 32%, #7fd3dc 62%, #2f9e96 100%);
+}
+#wallpaper:not(.custom)::after {
+  opacity: .8;
+  background:
+    radial-gradient(120% 95% at -10% 120%, transparent 54%, rgba(255,255,255,.55) 54.3%, rgba(255,255,255,.12) 56%, transparent 61%),
+    radial-gradient(110% 90% at 115% -20%, transparent 55%, rgba(255,255,255,.35) 55.3%, transparent 58%),
+    radial-gradient(90% 80% at 40% -30%, transparent 60%, rgba(10,30,110,.35) 60.5%, transparent 70%);
+}
+
+.hs { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 138px; column-gap: 46px; row-gap: 30px; }
+.hs .app-icon { justify-content: flex-start; padding-top: 14px; }
+.app-icon .ic { width: 70px; height: 70px; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.app-icon .name { font-size: 12px; font-weight: 500; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.app-icon .badge { left: 58px; }
+
+.wg { position: relative; border-radius: 22px; overflow: hidden; cursor: pointer; color: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.16); transition: transform .15s; }
+.wg:active { transform: scale(.97); }
+
+/* small: clock */
+.wg-clock { background: #f2f2f2; display: grid; place-items: center; }
+.wg-clock .face { position: relative; width: 120px; height: 120px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
+.wg-clock .face.night { background: #1c1c1e; }
+.wg-clock .face > i { position: absolute; left: 50%; top: 0; width: 0; height: 50%; transform-origin: 50% 100%; }
+.wg-clock .face > i b { position: absolute; left: 50%; top: 5px; transform: translateX(-50%); font: 600 11px var(--font); color: #1c1c1e; }
+.wg-clock .face.night > i b { color: #fff; }
+.wg-clock .face > i b { display: inline-block; }
+.wg-clock .city { position: absolute; left: 0; right: 0; top: 70px; text-align: center; font: 700 10px var(--font); color: #8e8e93; letter-spacing: .4px; }
+.wg-clock em { position: absolute; left: 50%; bottom: 50%; transform-origin: 50% 100%; border-radius: 3px; background: #1c1c1e; }
+.wg-clock .face.night em { background: #fff; }
+.wg-clock em.h { width: 4px; height: 30px; margin-left: -2px; }
+.wg-clock em.m { width: 3px; height: 44px; margin-left: -1.5px; }
+.wg-clock em.s { width: 1.5px; height: 50px; margin-left: -.75px; background: #ff9500 !important; }
+.wg-clock .dot { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: #ff9500; }
+
+/* small: simulator (Find My style) */
+.wg-sim { background: #dfe9d5; color: #1c1c1e; }
+.wg-sim .map { position: absolute; inset: 0; background:
+  linear-gradient(115deg, transparent 46%, #fff 46.5%, #fff 49%, transparent 49.5%),
+  linear-gradient(20deg, transparent 62%, #f8e7a8 62.5%, #f8e7a8 65%, transparent 65.5%),
+  radial-gradient(40% 35% at 78% 22%, #bfdcf2 0 98%, transparent 100%),
+  #e3ecd9; }
+.wg-sim .pin { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); width: 44px; height: 44px; border-radius: 50%; background: #8e8e93; border: 3px solid #fff; display: grid; place-items: center; color: #fff; box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+.wg-sim.live .pin { background: #0a84ff; }
+.wg-sim .pin svg { width: 24px; height: 24px; }
+.wg-sim .txt { position: absolute; left: 0; right: 0; bottom: 0; padding: 7px 12px 10px; background: rgba(255,255,255,.88); backdrop-filter: blur(8px); }
+.wg-sim .txt small { display: block; font-size: 10px; font-weight: 600; color: #8e8e93; }
+.wg-sim.live .txt small { color: #34c759; }
+.wg-sim .txt b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-sim .txt span { font-size: 11px; color: #3c3c43; }
+
+/* medium: weather */
+.wg-wx { --sky: #3d7fd6; background: linear-gradient(180deg, var(--sky), color-mix(in srgb, var(--sky) 65%, #0b1d3d)); padding: 12px 16px; display: flex; flex-direction: column; justify-content: space-between; }
+.wg-wx .top { display: flex; justify-content: space-between; }
+.wg-wx .loc { font-size: 14px; font-weight: 600; }
+.wg-wx .loc small { font-weight: 500; opacity: .85; }
+.wg-wx .temp { font-size: 42px; font-weight: 300; line-height: 1; margin-top: 2px; }
+.wg-wx .cond { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; font-weight: 500; }
+.wg-wx .cond i { font-style: normal; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px; margin-bottom: 2px; }
+.wg-wx .row { display: flex; justify-content: space-between; }
+.wg-wx .row div { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; }
+.wg-wx .row span { opacity: .85; font-weight: 600; }
+.wg-wx .row i { width: 8px; height: 8px; border-radius: 50%; }
+.wg-wx .row b { font-weight: 600; }
+
+/* large: route "photo" */
+.wg-route { background: #0b1330; }
+.wg-route svg { position: absolute; inset: 0; width: 100%; height: 100%; font-family: var(--font); }
+.wg-route .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 16px 14px; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+.wg-route .cap small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .6px; opacity: .85; }
+.wg-route .cap b { display: block; font-size: 20px; letter-spacing: .3px; }
+.wg-route .cap span { font-size: 12px; opacity: .85; }
+
+/* large: flight timeline (Calendar style) */
+.wg-cal { background: #fff; color: #1c1c1e; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px 14px 12px; }
+.wg-cal .col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wg-cal .hd small { display: block; font-size: 11px; font-weight: 700; color: #ff3b30; letter-spacing: .4px; }
+.wg-cal .hd b { display: block; font-size: 34px; font-weight: 400; line-height: 1.05; margin-bottom: 4px; }
+.wg-cal .up { font-size: 11px; font-weight: 700; color: #8e8e93; letter-spacing: .3px; margin-top: 3px; }
+.wg-cal .now { font-size: 22px; font-weight: 600; margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+.wg-cal .ev { --c: #8e8e93; padding: 6px 8px; border-radius: 7px; background: color-mix(in srgb, var(--c) 16%, #fff); border-left: 3px solid var(--c); }
+.wg-cal .ev b { display: block; font-size: 12px; color: color-mix(in srgb, var(--c) 70%, #000); }
+.wg-cal .ev span { font-size: 11px; color: #3c3c43; font-variant-numeric: tabular-nums; }
+.wg-cal .ev.gray { --c: #8e8e93; }
+.wg-cal .none { font-size: 13px; color: #8e8e93; margin: 0; }
+.wg-cal .ios-btn { align-self: flex-start; margin-top: auto; }
+
+/* page dots + dock */
+#home .page-dots { position: absolute; left: 0; right: 0; bottom: 118px; display: flex; justify-content: center; gap: 9px; }
+#home .page-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.45); }
+#home .page-dots i.on { background: #fff; }
+.search-pill { display: none; }
+.dock { bottom: 16px; gap: 20px; padding: 11px 16px; border-radius: 30px;
+  background: rgba(255,255,255,.22); backdrop-filter: blur(34px) saturate(1.8); -webkit-backdrop-filter: blur(34px) saturate(1.8);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.4), 0 10px 30px rgba(0,0,0,.12); }
+.dock .app-icon .ic { width: 66px; height: 66px; border-radius: 15px; }
+.dock .sep { width: 1px; height: 52px; background: rgba(255,255,255,.4); }
+.lib-ic { width: 100%; height: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 9px; background: rgba(255,255,255,.28); }
+.lib-ic span { border-radius: 5px; overflow: hidden; }
+.lib-ic svg { width: 100%; height: 100%; display: block; }
+.dock .app-icon.al-dock .ic { box-shadow: none; }
+
+/* App Library */
+.applib { position: absolute; inset: 0; display: flex; justify-content: center; padding-top: 50px; background: rgba(0,0,0,0); backdrop-filter: blur(0); transition: background .2s, backdrop-filter .2s; }
+.applib.show { background: rgba(0,0,0,.2); backdrop-filter: blur(30px) saturate(1.4); -webkit-backdrop-filter: blur(30px) saturate(1.4); }
+.al-box { width: 640px; transform: translateY(14px); opacity: 0; transition: transform .25s, opacity .2s; }
+.applib.show .al-box { transform: none; opacity: 1; }
+.al-search { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.25); color: rgba(255,255,255,.8); margin-bottom: 22px; }
+.al-search .sf { width: 18px; height: 18px; }
+.al-search input { flex: 1; border: 0; background: none; color: #fff; font-size: 17px; outline: none; }
+.al-search input::placeholder { color: rgba(255,255,255,.7); }
+.al-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px 26px; }
+.al-grid.hidden, .al-list.hidden { display: none; }
+.al-folder { display: flex; flex-direction: column; align-items: center; gap: 7px; color: #fff; font-size: 12px; font-weight: 500; }
+.al-tile { width: 132px; height: 132px; border-radius: 26px; padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: rgba(255,255,255,.22); }
+.al-tile button { border: 0; padding: 0; border-radius: 12px; overflow: hidden; cursor: pointer; background: none; }
+.al-tile svg { width: 100%; height: 100%; display: block; }
+.al-list { display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: rgba(255,255,255,.18); }
+.al-list button { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border: 0; background: none; color: #fff; font-size: 16px; cursor: pointer; text-align: left; }
+.al-list .ic { width: 38px; height: 38px; border-radius: 9px; overflow: hidden; }
+.al-list .ic svg { width: 100%; height: 100%; display: block; }
+
+/* fullscreen on smaller iPads: let rows follow the available space */
+body.fullscreen .hs { grid-auto-rows: min(138px, 15.5vh); column-gap: 4vw; }
+body.fullscreen #home { padding-left: 7vw; padding-right: 7vw; }

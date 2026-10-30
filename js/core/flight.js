@@ -31,6 +31,7 @@ function apt(a, w) {
     transAlt: n(a.trans_alt), transLevel: n(a.trans_level),
     metar: (w?.metar || a.metar || "").replace(/\s*\n\s*/g, " "), taf: w?.taf || a.taf || "",
     metarCategory: a.metar_category,
+    notams: arr(a.notam).map(x => ({ id: x.notam_id, text: (x.notam_text || "").trim(), from: x.date_effective, to: x.date_expire })).filter(x => x.text),
   };
 }
 
@@ -72,6 +73,7 @@ export function fromSimbrief(o) {
       gs: n(f.groundspeed), fir: f.fir, mora: n(f.mora),
     })),
     firs: [o.atc?.fir_orig, ...arr(o.atc?.fir_enroute), o.atc?.fir_dest].filter(Boolean),
+    enrouteNotams: arr(o.notams).slice(0, 120).map(x => ({ id: x.notam_id, icao: x.icao_id || x.location_icao, name: x.icao_name, text: (x.notam_report || x.notam_text || "").trim() })).filter(x => x.text),
     fpl: o.atc?.flightplan_text,
     planHtml: o.text?.plan_html,
     pdf: o.files?.pdf?.link ? o.files.directory + o.files.pdf.link : null,

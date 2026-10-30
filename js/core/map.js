@@ -288,3 +288,51 @@ export function ownship(map, { color = "#ffffff", outline = "#111", size = 34, t
   };
   return ctl;
 }
+
+// ---------------------------------------------------------------- basemaps
+// Esri basemaps work without an API key (attribution required).
+const ESRI = svc => `https://server.arcgisonline.com/ArcGIS/rest/services/${svc}/MapServer/tile/{z}/{y}/{x}`;
+const LAND_MAX = 7; // vector Natural Earth land below this zoom, detailed tiles above
+
+/**
+ * Detailed basemap that stays sharp at every zoom.
+ * style "charts": Charts+-like cream land / grey-blue sea (vector) when zoomed out,
+ *                 Esri light canvas when zoomed in.
+ * style "fd":     Esri physical relief zoomed out, Esri topographic detail zoomed in.
+ * Returns { group, labels, setLabels(bool), remove() }.
+ */
+export function basemap(map, style = "charts") {
+  if (!map.getPane("base")) { map.createPane("base"); map.getPane("base").style.zIndex = 140; }
+  if (!map.getPane("labels")) { map.createPane("labels"); map.getPane("labels").style.zIndex = 390; map.getPane("labels").style.pointerEvents = "none"; }
+  const layers = [];
+  let land = null;
+  if (style === "fd") {
+    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
+    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
+  } else {
+    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
+    // Charts+ look when zoomed out: flat cream land on grey-blue sea.
+    addLand(map, { land: "#f3eed9", borders: "#9a9a9a" }).then(l => {
+      land = l;
+      const vis = () => { const p = map.getPane("land"); if (p) p.style.display = map.getZoom() < LAND_MAX ? "" : "none"; };
+      map.on("zoomend", vis); vis();
+    }).catch(() => {});
+  }
+  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, className: "bm-labels" });
+  const group = L.layerGroup(layers).addTo(map);
+  return {
+    group, labels,
+    setLabels(on) { on ? labels.addTo(map) : labels.remove(); },
+    remove() { group.remove(); labels.remove(); land?.remove(); },
+  };
+}
+
+/** Navigraph enroute chart tiles (needs a Navigraph client with the "tiles" scope and a signed-in user). */
+export async function navigraphTiles(map, source = "IFR HIGH", theme = "DAY") {
+  const NG = await import("./navigraph.js");
+  const n = await NG.navigraph();
+  if (!n || !n.auth.getUser()) throw new Error("Sign in to Navigraph first (Settings › Navigraph)");
+  const { NavigraphTileLayer } = await import("https://cdn.jsdelivr.net/npm/@navigraph/leaflet@2.2.1/+esm");
+  const layer = new NavigraphTileLayer(n.auth, { type: "Navigraph", source, theme }, { pane: "base" });
+  return layer;
+}

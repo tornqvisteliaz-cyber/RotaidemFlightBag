@@ -16,7 +16,9 @@ An iPad electronic flight bag for flight simulation, modelled on the apps airlin
 | **Checklist**, **ScratchPad**, **Library**, **Clock**, **Converter**, **Logbook** | Electronic normal checklist, handwriting pad with CRAFT/ATIS/TO-data templates, PDF document library, UTC/OOOI block times/timers, unit & fuel uplift converter, flight log with CSV export. |
 | **App Store**, **Settings** | Install and remove apps; iPadOS-style settings for SimBrief, Navigraph, fleet, units, display, wallpaper, Connect iPad. |
 
-iPadOS touches: widgets, dock with recents, Search (Spotlight), Control Center (tap the top-right of the status bar), long-press app menus and jiggle editing, app switcher (swipe up and hold, or double-tap the home bar), brightness and Night Shift.
+iPadOS touches: home screen with widgets (UTC clock, simulator, weather, route, flight timeline), dock with recents and App Library, Search (pull down), Control Center (tap the top-right of the status bar), long-press app menus and jiggle editing, app switcher, brightness and Night Shift.
+
+**Leaving an app on a real iPad:** when the EFB is added to the Home Screen, iPadOS uses the bottom-edge swipe to close the whole EFB. Use **AssistiveTouch** (the floating button – tap for Home, App Switcher, Control Center and Search; press and hold for Home) or a **three-finger swipe up**. Toggle it in Settings › Accessibility.
 
 ## Windows app (.exe)
 

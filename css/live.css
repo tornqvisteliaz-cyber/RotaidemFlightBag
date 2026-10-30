@@ -95,3 +95,21 @@
 .set .steps { padding: 6px 16px; font-size: 14.5px; line-height: 1.5; color: #3c3c43; }
 .set .steps p { margin: 8px 0; }
 .set .steps code { background: #f2f2f7; padding: 1px 6px; border-radius: 5px; font-size: 13px; }
+
+/* ==================================================================
+   AssistiveTouch
+   ================================================================== */
+#assistive { position: absolute; left: 0; top: 0; z-index: 75; width: 60px; height: 60px; padding: 0; border: 0; border-radius: 16px; background: rgba(30,30,32,.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; display: grid; place-items: center; transition: transform .35s cubic-bezier(.2,.9,.3,1.1), opacity .4s; touch-action: none; }
+#assistive.drag { transition: none; opacity: 1; }
+#assistive.idle { opacity: .42; }
+#assistive i { width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,.25); display: grid; place-items: center; }
+#assistive b { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
+#screen.switcher #assistive { display: none; }
+.at-menu { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,0); transition: background .2s; }
+.at-menu.show { background: rgba(0,0,0,.12); }
+.at-panel { width: 330px; height: 330px; border-radius: 28px; background: rgba(28,28,30,.86); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); padding: 26px 14px; transform: scale(.4); opacity: 0; transition: transform .22s cubic-bezier(.2,.9,.3,1.15), opacity .18s; }
+.at-menu.show .at-panel { transform: none; opacity: 1; }
+.at-panel button { border: 0; background: none; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; cursor: pointer; border-radius: 16px; }
+.at-panel button:active { background: rgba(255,255,255,.12); }
+.at-panel .sf { width: 34px; height: 34px; }
+.at-panel .home i { width: 34px; height: 34px; border-radius: 10px; border: 3px solid #fff; display: block; }

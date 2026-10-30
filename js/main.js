@@ -7,6 +7,7 @@ import { getFlight, fetchSimbrief } from "./core/flight.js";
 import { loadAirports, searchAirports } from "./core/airports.js";
 import { APPS, byId, layout, uninstall, moveApp } from "./core/registry.js";
 import { WALLPAPERS } from "./core/wallpapers.js";
+import { widgetsHTML, updateWidgets, tickClock } from "./core/widgets.js";
 import { applyPairing, connectSheet, installHint, isStandalone, isIOS } from "./core/pair.js";
 import { startSim, simState, onSim } from "./core/sim.js";
 import { I } from "./core/sf.js";
@@ -95,48 +96,49 @@ function iconHTML(id) {
 
 function renderHome() {
   const l = layout();
-  const recents = [...running.keys()].filter(id => !l.dock.includes(id)).slice(-2);
+  const recents = [...running.keys()].filter(id => !l.dock.includes(id) && byId[id]).slice(-3);
   $("#home").innerHTML = `
-    <div class="widgets">
-      <div class="widget w-clock" data-app="clock" id="w-clock"></div>
-      <div class="widget w-flight" data-app="briefing" id="w-flight"></div>
-    </div>
-    <div class="app-grid">${l.grid.map(iconHTML).join("")}</div>
-    <button class="search-pill" data-spot><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg> Search</button>
-    <div class="dock">${l.dock.map(iconHTML).join("")}${recents.length ? `<div class="sep"></div>${recents.map(iconHTML).join("")}` : ""}</div>
+    <div class="hs">${widgetsHTML()}${l.grid.map(iconHTML).join("")}</div>
+    <div class="page-dots"><i class="on"></i><i></i></div>
+    <div class="dock">${l.dock.map(iconHTML).join("")}<div class="sep"></div>${recents.map(iconHTML).join("")}
+      <div class="app-icon al-dock" data-library><div class="ic">${libraryIcon()}</div><span class="name">App Library</span></div></div>
     ${editing ? `<button class="edit-done" data-done>Done</button>` : ""}`;
   $("#home").classList.toggle("editing", editing);
   renderWidgets();
 }
+const libraryIcon = () => {
+  const ids = APPS.filter(a => !a.core).slice(0, 4).map(a => a.id);
+  return `<div class="lib-ic">${ids.map(id => `<span>${APP_ICONS[id]}</span>`).join("")}</div>`;
+};
 
-function renderWidgets() {
-  const d = new Date();
-  const sep = settings().timeSep || ".";
-  const wc = $("#w-clock");
-  if (wc) wc.innerHTML = `
-    <div><h4>UTC</h4><div class="big">${pad(d.getUTCHours())}${sep}${pad(d.getUTCMinutes())}</div><div class="lbl">${d.toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })}</div></div>
-    <div><h4>Local</h4><div class="big">${pad(d.getHours())}${sep}${pad(d.getMinutes())}</div><div class="lbl">UTC${d.getTimezoneOffset() <= 0 ? "+" : "−"}${Math.abs(d.getTimezoneOffset() / 60)}</div></div>`;
-  const wf = $("#w-flight");
-  if (!wf) return;
-  const f = getFlight();
-  if (!f) {
-    wf.innerHTML = `<h4>Flight</h4><div class="empty">No flight loaded.<br>Import your latest SimBrief OFP or create a flight in Briefing.
-      <div><button class="ios-btn small" data-fetch>${settings().simbriefUser ? "Import from SimBrief" : "Open Briefing"}</button></div></div>`;
-    return;
-  }
-  const z = ms => (ms ? `${pad(new Date(ms).getUTCHours())}${pad(new Date(ms).getUTCMinutes())}Z` : "—");
-  wf.innerHTML = `<h4>${esc(f.callsign || "Flight")} · ${esc(f.aircraft?.icao || "")} ${esc(f.aircraft?.reg || "")}</h4>
-    <div class="route"><b>${esc(f.orig?.icao)}</b><span class="line"></span><b>${esc(f.dest?.icao)}</b></div>
-    <div class="meta"><span>${esc(f.orig?.name || "")}</span><span>${esc(f.dest?.name || "")}</span></div>
-    <div class="grid">
-      <div><span>Off</span><b>${z(f.times?.off)}</b></div>
-      <div><span>ETE</span><b>${secToHM(f.times?.ete)}</b></div>
-      <div><span>On</span><b>${z(f.times?.on)}</b></div>
-      <div><span>Dist</span><b>${fmtNum(f.distance)} nm</b></div>
-      <div><span>Cruise</span><b>FL${f.cruiseAlt ? Math.round(f.cruiseAlt / 100) : "—"}</b></div>
-      <div><span>Block fuel</span><b>${fmtNum(f.fuel?.plan_ramp)}</b></div>
-    </div>`;
+function renderWidgets() { updateWidgets(); }
+
+// App Library: every installed app, grouped by category (as on iPadOS).
+function appLibrary() {
+  if ($(".applib")) return;
+  const l = layout(), inst = new Set([...l.grid, ...l.dock]);
+  const cats = {};
+  for (const a of APPS) if (inst.has(a.id)) (cats[a.category] ||= []).push(a);
+  const lib = html(`<div class="applib"><div class="al-box">
+    <div class="al-search">${I.search}<input placeholder="App Library" autocomplete="off"></div>
+    <div class="al-grid">${Object.entries(cats).map(([c, apps]) => `<div class="al-folder"><div class="al-tile">${apps.slice(0, 4).map(a => `<button data-open="${a.id}" title="${esc(a.name)}">${APP_ICONS[a.id]}</button>`).join("")}</div><span>${esc(c)}</span></div>`).join("")}</div>
+    <div class="al-list hidden"></div></div></div>`);
+  $("#overlay-root").append(lib);
+  requestAnimationFrame(() => lib.classList.add("show"));
+  const inp = $("input", lib), list = $(".al-list", lib);
+  inp.addEventListener("input", () => {
+    const q = inp.value.trim().toLowerCase();
+    $(".al-grid", lib).classList.toggle("hidden", !!q);
+    list.classList.toggle("hidden", !q);
+    list.innerHTML = APPS.filter(a => inst.has(a.id) && a.name.toLowerCase().includes(q)).map(a => `<button data-open="${a.id}"><span class="ic">${APP_ICONS[a.id]}</span>${esc(a.name)}</button>`).join("");
+  });
+  lib.addEventListener("click", e => {
+    const b = e.target.closest("[data-open]");
+    if (b) { lib.remove(); openApp(b.dataset.open); return; }
+    if (e.target === lib) { lib.classList.remove("show"); setTimeout(() => lib.remove(), 200); }
+  });
 }
+setInterval(tickClock, 1000);
 setInterval(renderWidgets, 15e3);
 listen("flight", renderWidgets);
 listen("home", renderHome);
@@ -151,6 +153,8 @@ on(home, "click", "[data-fetch]", async e => {
 on(home, "click", "[data-rm]", (e, b) => { e.stopPropagation(); confirmRemove(b.dataset.rm); });
 on(home, "click", "[data-done]", () => { editing = false; renderHome(); });
 on(home, "click", "[data-spot]", () => spotlight());
+on(home, "click", "[data-library]", e => { e.stopPropagation(); appLibrary(); });
+on(home, "click", "[data-open-sim]", () => openApp("settings", { section: "sim" }));
 on(home, "click", "[data-app]", (e, el) => {
   if (longPressed) { longPressed = false; return; }
   if (editing || e.target.closest("[data-rm], [data-fetch]")) return;
@@ -175,7 +179,7 @@ home.addEventListener("pointerdown", e => {
 home.addEventListener("contextmenu", e => { e.preventDefault(); const icon = e.target.closest(".app-icon"); if (icon && !longPressed) { longPressed = true; iconMenu(icon); } });
 // Pull down on empty home screen → Spotlight
 home.addEventListener("pointerdown", e => {
-  if (e.target.closest(".app-icon, .widget, .dock, button")) return;
+  if (e.target.closest(".app-icon, .wg, .dock, button")) return;
   const y0 = e.clientY;
   const up = ev => { removeEventListener("pointerup", up); if ((ev.clientY - y0) / screenScale() > 50) spotlight(); };
   addEventListener("pointerup", up);
@@ -394,7 +398,7 @@ function closeApp(id) {
 
 // ---- app switcher ---------------------------------------------------------
 function enterSwitcher() {
-  $$(".popover, .popover-shield").forEach(n => n.remove());
+  $$(".popover, .popover-shield, .at-menu").forEach(n => n.remove());
   const ids = [...running.keys()];
   screen.classList.add("switcher", "app-open");
   setBar("light");
@@ -487,11 +491,97 @@ document.addEventListener("touchend", e => {
 }, { passive: false });
 if (matchMedia("(hover: none)").matches) document.body.classList.add("touch");
 
+// ---- leaving apps on a real iPad ---------------------------------------------------
+// Installed to the Home Screen, iPadOS owns the bottom-edge swipe (it closes the whole
+// Flight Bag). AssistiveTouch and a three-finger swipe up return to *our* home screen.
+const atOn = () => settings().assistiveTouch ?? (matchMedia("(pointer: coarse)").matches || isStandalone());
+const at = html(`<button id="assistive" aria-label="AssistiveTouch"><i><b></b></i></button>`);
+screen.append(at);
+let atPos = (() => { try { return JSON.parse(localStorage.getItem("rfb.atpos")) || { side: "right", y: 0.62 }; } catch { return { side: "right", y: 0.62 }; } })();
+let atIdle;
+function placeAt() {
+  at.style.display = atOn() ? "" : "none";
+  const W = screen.offsetWidth, H = screen.offsetHeight;
+  at.style.transform = `translate(${atPos.side === "left" ? 8 : W - 68}px, ${Math.max(40, Math.min(H - 90, atPos.y * H))}px)`;
+  at.classList.remove("idle");
+  clearTimeout(atIdle);
+  atIdle = setTimeout(() => at.classList.add("idle"), 3000);
+}
+placeAt();
+addEventListener("resize", placeAt);
+listen("settings", ({ key }) => key === "assistiveTouch" && placeAt());
+at.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  at.setPointerCapture(e.pointerId);
+  const k = screenScale(), sr = screen.getBoundingClientRect();
+  const x0 = e.clientX, y0 = e.clientY, t0 = Date.now();
+  let moved = false;
+  at.classList.remove("idle"); at.classList.add("drag");
+  const move = ev => {
+    if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 6) moved = true;
+    if (!moved) return;
+    at.style.transform = `translate(${(ev.clientX - sr.left) / k - 30}px, ${(ev.clientY - sr.top) / k - 30}px)`;
+  };
+  const up = ev => {
+    at.removeEventListener("pointermove", move); at.removeEventListener("pointerup", up);
+    at.classList.remove("drag");
+    if (moved) {
+      const x = (ev.clientX - sr.left) / k, y = (ev.clientY - sr.top) / k;
+      atPos = { side: x < screen.offsetWidth / 2 ? "left" : "right", y: y / screen.offsetHeight - 30 / screen.offsetHeight };
+      try { localStorage.setItem("rfb.atpos", JSON.stringify(atPos)); } catch { /* ignore */ }
+      placeAt();
+    } else if (Date.now() - t0 > 550) goHome();
+    else atMenu();
+  };
+  at.addEventListener("pointermove", move); at.addEventListener("pointerup", up);
+});
+function atMenu() {
+  $(".at-menu")?.remove();
+  const m = html(`<div class="at-menu"><div class="at-panel">
+    <button data-at="cc">${I.gear}<span>Control Center</span></button>
+    <button data-at="search">${I.search}<span>Search</span></button>
+    <button data-at="switch">${I.apps}<span>App Switcher</span></button>
+    <button data-at="pair">${I.ipad}<span>Connect iPad</span></button>
+    <button data-at="settings">${I.person}<span>Settings</span></button>
+    <button data-at="home" class="home"><i></i><span>Home</span></button>
+  </div></div>`);
+  $("#overlay-root").append(m);
+  requestAnimationFrame(() => m.classList.add("show"));
+  const close = () => { m.classList.remove("show"); setTimeout(() => m.remove(), 200); };
+  m.addEventListener("click", e => {
+    const b = e.target.closest("[data-at]");
+    close();
+    if (!b) return;
+    const a = b.dataset.at;
+    if (a === "home") goHome();
+    if (a === "switch") enterSwitcher();
+    if (a === "cc") controlCenter();
+    if (a === "search") { goHome(); setTimeout(spotlight, 300); }
+    if (a === "pair") connectSheet();
+    if (a === "settings") openApp("settings");
+  });
+}
+
+// Three-finger swipe up anywhere → Home (like the iPad multitasking gesture).
+const fingers = new Map();
+addEventListener("pointerdown", e => { if (e.pointerType === "touch") fingers.set(e.pointerId, e.clientY); }, true);
+addEventListener("pointerup", e => {
+  if (e.pointerType !== "touch" || !fingers.has(e.pointerId)) return;
+  const many = fingers.size >= 3, dy = fingers.get(e.pointerId) - e.clientY;
+  fingers.delete(e.pointerId);
+  if (many && dy > 60 && active) { fingers.clear(); goHome(); }
+}, true);
+addEventListener("pointercancel", e => fingers.delete(e.pointerId), true);
+
 // ---- boot ---------------------------------------------------------------------
 renderHome();
 loadAirports();
 startSim();
-onSim(s => statusbar.classList.toggle("sim-live", !!s.connected));
+let lastWidgetSim = 0;
+onSim(s => {
+  statusbar.classList.toggle("sim-live", !!s.connected);
+  if (!active && Date.now() - lastWidgetSim > 2000) { lastWidgetSim = Date.now(); renderWidgets(); }
+});
 if (settings().autoFetchOfp && settings().simbriefUser) fetchSimbrief().catch(() => {});
 if (justPaired) toast(settings().simbriefUser ? `Connected – SimBrief ${settings().simbriefUser} imported` : "Connected to your Flight Bag", 3500);
 if (params.has("connect")) connectSheet();

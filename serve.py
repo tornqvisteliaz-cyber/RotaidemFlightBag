@@ -98,7 +98,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    # On Windows SO_REUSEADDR lets two servers share a port; keep ports exclusive there.
+    allow_reuse_address = os.name != "nt"
 
 
 def create_server(port=DEFAULT_PORT, tries=10):

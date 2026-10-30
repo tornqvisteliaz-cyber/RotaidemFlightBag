@@ -1,12 +1,12 @@
 // Offline cache: app shell + airport database are cached on install; CDN libraries,
 // map land data and chart libraries are cached the first time they are used.
-const VERSION = "rfb-v2";
+const VERSION = "rfb-v4";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest",
-  "css/ios.css", "css/apps.css", "css/enroute.css", "css/tools.css", "css/live.css",
+  "css/ios.css", "css/apps.css", "css/enroute.css", "css/tools.css", "css/live.css", "css/briefing.css", "css/home.css",
   "js/main.js", "js/core/ui.js", "js/core/store.js", "js/core/icons.js", "js/core/flight.js", "js/core/airports.js",
   "js/core/geo.js", "js/core/wx.js", "js/core/map.js", "js/core/navigraph.js", "js/core/genchart.js", "js/core/perf.js",
-  "js/core/registry.js", "js/core/wallpapers.js", "js/core/pair.js", "js/core/sim.js", "js/core/amm.js", "js/core/sf.js",
+  "js/core/registry.js", "js/core/wallpapers.js", "js/core/pair.js", "js/core/sim.js", "js/core/amm.js", "js/core/sf.js", "js/core/widgets.js",
   "js/apps/charts.js", "js/apps/enroute.js", "js/apps/opt.js", "js/apps/briefing.js", "js/apps/weather.js", "js/apps/checklist.js",
   "js/apps/scratchpad.js", "js/apps/library.js", "js/apps/clock.js", "js/apps/settings.js", "js/apps/appstore.js",
   "js/apps/converter.js", "js/apps/logbook.js",

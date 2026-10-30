@@ -32,7 +32,7 @@ class ChartsApp {
     this.chart = null;        // displayed chart
     this.rot = 0;
     this.night = settings().chartTheme === "night";
-    this.layers = kv.get("charts.layers", { ad: true, nav: true, fir: true, awy: true, wpt: true, wx: false, sig: false });
+    this.layers = { lbl: true, ...kv.get("charts.layers", { ad: true, nav: true, fir: true, awy: true, wpt: true, wx: false, sig: false }) };
     this.enr = { airspace: "HIGH", com: false, era: false };
     this.render();
     this.unsub = [
@@ -53,7 +53,7 @@ class ChartsApp {
           <button class="c-sq" data-act="search" title="Search airport">${UI.search}</button>
           <div class="c-layers">
             <button class="c-sq" data-act="sliders" title="Map options">${UI.sliders}</button>
-            ${[["ad", "AD"], ["nav", "NAVAID"], ["fir", "FIR"], ["awy", "AWY HI"], ["wpt", "WPT"], ["wx", "WX"], ["sig", "SIGMET"]]
+            ${[["ad", "AD"], ["nav", "NAVAID"], ["fir", "FIR"], ["awy", "AWY HI"], ["wpt", "WPT"], ["lbl", "LABELS"], ["wx", "WX"], ["sig", "SIGMET"]]
               .map(([k, l]) => `<button class="c-layer ${this.layers[k] ? "on" : ""}" data-layer="${k}">${l}</button>`).join("")}
           </div>
         </div>
@@ -71,6 +71,7 @@ class ChartsApp {
           <div class="c-north">${UI.north}<b>N</b></div>
           <div class="c-scalebar"><div class="bar"></div><div class="lbls"><span>0</span><span class="mid"></span><span class="end"></span></div></div>
         </div>
+        <div class="enr-only"><div class="map-zoom"><button data-z="in" aria-label="Zoom in">+</button><button data-z="out" aria-label="Zoom out">−</button></div></div>
         <div class="c-amm ad-only"><div class="c-amm-map"></div>
           <div class="c-amm-bar"><div class="srch"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg><input placeholder="Taxiway" maxlength="5" autocomplete="off" spellcheck="false"></div>
             <div class="chips"></div>
@@ -177,12 +178,13 @@ class ChartsApp {
       if (this.role === "OTHER") cats.splice(1, 1, "SID", "STAR");
       const s = this.sel[this.icao] || {};
       const m = this.metarDecoded;
-      const warn = m && (m.cat === "IFR" || m.cat === "LIFR" || (m.wx || []).some(w => /TS|FZ|\+/.test(w)));
+      const notams = this.airportNotams();
+      const warn = notams.length || (m && (m.cat === "IFR" || m.cat === "LIFR" || (m.wx || []).some(w => /TS|FZ|\+/.test(w))));
       $(".c-rcol.ad-only", this.el).innerHTML = cats.map(c => {
         const count = this.index.filter(x => x.cat === c).length;
         const chosen = s[c];
         if (c === "GEN") return `<button class="c-rt gen ${warn ? "hatch" : ""} ${this.chart?.cat === c ? "cur" : ""}" data-cat="GEN"><span class="lbl">GEN</span>
-          <span class="note">${m ? esc(m.raw.slice(0, 120)) : chosen ? `<em class="teal">${esc(chosen.short || chosen.name)}</em>` : `${count} chart${count === 1 ? "" : "s"}`}</span></button>`;
+          <span class="note ${notams.length ? "notam" : ""}">${notams.length ? esc(notamHeadline(notams[0].text)) : m ? esc(m.raw.slice(0, 120)) : chosen ? `<em class="teal">${esc(chosen.short || chosen.name)}</em>` : `${count} chart${count === 1 ? "" : "s"}`}</span></button>`;
         return `<button class="c-rt ${this.chart?.cat === c ? "cur" : ""}" data-cat="${c}"><span class="lbl">${CAT_NAMES[c]}</span>
           ${chosen ? `<em class="teal">${esc(chosen.short || chosen.name)}</em>` : `<span class="cnt">${count ? count + " charts" : "–"}</span>`}</button>`;
       }).join("") + `<button class="c-rt" data-act="user"><span class="lbl">USER</span><span class="cnt">${kv.get("bookmarks", []).length || "–"}</span></button>`;
@@ -302,8 +304,16 @@ class ChartsApp {
   }
 
   // ---------------------------------------------------------------- chart list
+  /** NOTAMs for the current aerodrome from the loaded OFP. */
+  airportNotams() {
+    const f = getFlight();
+    const a = [f?.orig, f?.dest, ...(f?.altns || [])].find(x => x?.icao === this.icao);
+    return a?.notams || [];
+  }
+
   chartList(cat, anchor) {
     if (!this.icao) return this.search(anchor);
+    const notams = cat === "GEN" ? this.airportNotams() : [];
     const list = this.index.filter(c => c.cat === cat);
     const rwys = [...new Set(list.flatMap(c => c.runways))].sort();
     const ngNote = !NG.isConfigured()
@@ -313,6 +323,7 @@ class ChartsApp {
       <header><b>${esc(this.icao)}</b> · ${CAT_NAMES[cat]} <span class="dim">${list.length} chart${list.length === 1 ? "" : "s"}</span></header>
       ${rwys.length ? `<div class="chips"><button class="on" data-rw="">ALL</button>${rwys.map(r => `<button data-rw="${esc(r)}">${esc(r)}</button>`).join("")}</div>` : ""}
       <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
+      ${notams.length ? `<div class="c-notams"><h5>NOTAM <span>${notams.length}</span></h5>${notams.map(n => `<article><b>${esc(n.id || "")}</b><p>${esc(n.text)}</p></article>`).join("")}</div>` : ""}
       ${ngNote}</div>`);
     const p = popover(anchor, body, { side: this.mode === "ad" && anchor.closest(".c-right") ? "left" : "bottom", width: 460 });
     on(p.el, "click", "[data-id]", (e, b) => { closePopovers(); this.display(this.index.find(c => c.id === b.dataset.id)); });
@@ -611,7 +622,9 @@ class ChartsApp {
     this.map.on("zoomend moveend", () => this.updateScale());
     this.own = M.ownship(this.map, { color: "#ffffff", outline: "#d22fc9", size: 32, trailColor: "#d22fc9" });
     this.map.on("dragstart", () => { if (this.own.follow) { this.own.follow = false; this.renderRight(); } });
-    try { await M.addLand(this.map, { land: "#f3eed9", borders: "#8d8d8d" }); } catch { toast("Map: offline – land data unavailable"); }
+    this.bm = M.basemap(this.map, "charts");
+    this.bm.setLabels(this.layers.lbl !== false);
+    on(this.el, "click", "[data-z]", (e, b) => (b.dataset.z === "in" ? this.map.zoomIn(0.75) : this.map.zoomOut(0.75)));
     this.lyr = {};
     this.lyr.ad = await M.airportLayer(this.map, { highlight: this.flightAirports(), color: "#2b7d69" });
     this.lyr.nav = await M.navaidLayer(this.map, { ndb: this.enr.airspace === "LOW" });
@@ -639,6 +652,7 @@ class ChartsApp {
     b.classList.toggle("on", this.layers[k]);
     kv.set("charts.layers", this.layers);
     if (k === "wpt") return this.refreshRoute();
+    if (k === "lbl") return this.bm?.setLabels(this.layers.lbl);
     if (k === "wx" && !this.lyr.wx && this.layers.wx) {
       try { const r = await M.radar(this.map); this.lyr.wx = r.layer; } catch { toast("Radar unavailable"); }
     }
@@ -717,7 +731,16 @@ class ChartsApp {
     const p = popover(anchor, `<div class="c-pop menu">
       <button data-o="fit">Zoom to route</button>
       <button data-o="dep">Centre on departure</button>
-      <button data-o="dest">Centre on destination</button></div>`, { side: "right", width: 240 });
+      <button data-o="dest">Centre on destination</button>
+      ${NG.isConfigured() && settings().navigraphTiles ? ["IFR HIGH", "IFR LOW", "VFR", "WORLD"].map(s => `<button data-ng="${s}">Navigraph ${s}</button>`).join("") + `<button data-ng="">Standard map</button>` : ""}</div>`, { side: "right", width: 260 });
+    on(p.el, "click", "[data-ng]", async (e, b) => {
+      closePopovers();
+      this.ngLayer?.remove(); this.ngLayer = null;
+      if (b.dataset.ng) {
+        try { this.ngLayer = (await M.navigraphTiles(this.map, b.dataset.ng, this.night ? "NIGHT" : "DAY")).addTo(this.map); this.bm.group.remove(); }
+        catch (err) { toast(err.message); this.bm.group.addTo(this.map); }
+      } else this.bm.group.addTo(this.map);
+    });
     on(p.el, "click", "[data-o]", (e, b) => {
       closePopovers();
       const f = getFlight();
@@ -729,6 +752,11 @@ class ChartsApp {
 }
 
 // ---------------------------------------------------------------- helpers
+/** First line of a NOTAM's E) item, as on the GEN tile ("TEMPORARY CLOSURE OF TWY N4…"). */
+function notamHeadline(t) {
+  const e = t.split(/\bE\)\s*/)[1] || t;
+  return e.replace(/\s+/g, " ").trim().slice(0, 110);
+}
 function shortName(n) {
   const m = n.match(/\b([A-Z]{3,6}\s?\d[A-Z]?)\b/);
   if (m) return m[1];

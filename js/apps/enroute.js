@@ -12,10 +12,16 @@ import * as M from "../core/map.js";
 import { fetchGround, groundLayer } from "../core/amm.js";
 import { simState, onSim } from "../core/sim.js";
 import { allAirports } from "../core/airports.js";
+import { settings } from "../core/store.js";
+import * as NG from "../core/navigraph.js";
 
 export default { mount: (root, ctx, args) => new EnrouteApp(root, ctx, args) };
 
-const MAP_TYPES = { "High IFR": "physical", "Low IFR": "physical", "Terrain": "physical", "Plain": "plain" };
+// Map types: Navigraph enroute charts when signed in with the tiles scope, otherwise the built-in maps.
+const MAP_TYPES = {
+  "High IFR": { ng: "IFR HIGH", base: "fd" }, "Low IFR": { ng: "IFR LOW", base: "fd" }, "VFR": { ng: "VFR", base: "fd" },
+  "World": { ng: "WORLD", base: "fd" }, "Terrain": { base: "fd" }, "Plain": { base: "charts" },
+};
 
 class EnrouteApp {
   constructor(root, ctx) {
@@ -63,6 +69,7 @@ class EnrouteApp {
         <button data-t="collapse" title="Hide toolbar">${UI.chevR}</button>
       </div>
       <div class="fd-measure hidden"></div>
+      <div class="map-zoom"><button data-z="in" aria-label="Zoom in">+</button><button data-z="out" aria-label="Zoom out">−</button></div>
       <div class="fd-own hidden"></div>
       <div class="fd-ground hidden"><input placeholder="Taxiway" maxlength="5" autocomplete="off" spellcheck="false"><span></span></div>
       <div class="fd-bottom">
@@ -114,12 +121,8 @@ class EnrouteApp {
       if (b) this.map.fitBounds(b, { padding: [60, 60], maxZoom: 16 });
       if (!gi.value) this.ground?.clearSearch();
     });
-    this.map.createPane("terrain"); this.map.getPane("terrain").style.zIndex = 160;
-    this.base = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}", {
-      maxNativeZoom: 8, maxZoom: 11.99, pane: "terrain", className: "fd-tiles", attribution: "Terrain © Esri, US NPS",
-    });
-    this.land = await M.addLand(this.map, { land: "#ece6cf", borders: "#a3a3a3", dash: "3 3" }).catch(() => null);
-    this.applyBase();
+    on(this.el, "click", "[data-z]", (e, b) => (b.dataset.z === "in" ? this.map.zoomIn(0.75) : this.map.zoomOut(0.75)));
+    await this.applyBase();
     this.lyr = {};
     this.map.on("click", e => this.mapClick(e));
     this.map.on("zoomend", () => this.lyr.awy && (this.map.getZoom() >= 4.5 ? this.lyr.awy.addTo(this.map) : this.lyr.awy.remove()));
@@ -131,10 +134,25 @@ class EnrouteApp {
     if (this.opts.atc) this.loadAtc();
   }
 
-  applyBase() {
-    const terrain = this.opts.terrain && MAP_TYPES[this.opts.mapType] !== "plain";
-    if (terrain) this.base.addTo(this.map); else this.base.remove();
-    this.el.classList.toggle("plain", !terrain);
+  async applyBase() {
+    const t = MAP_TYPES[this.opts.mapType] || MAP_TYPES["High IFR"];
+    const style = this.opts.terrain ? t.base : "charts";
+    this.ngLayer?.remove(); this.ngLayer = null;
+    if (t.ng && NG.isConfigured() && settings().navigraphTiles) {
+      try {
+        this.ngLayer = await M.navigraphTiles(this.map, t.ng, "DAY");
+        this.ngLayer.addTo(this.map);
+      } catch (e) { toast(`Navigraph ${this.opts.mapType}: ${e.message}`); }
+    }
+    if (this.bm?.style !== style || !this.bm) {
+      this.bm?.remove();
+      this.bm = M.basemap(this.map, style);
+      this.bm.style = style;
+    }
+    this.bm.group[this.ngLayer ? "remove" : "addTo"](this.map);
+    this.bm.setLabels(!this.ngLayer && this.opts.labels !== false);
+    this.el.classList.toggle("plain", style === "charts");
+    this.el.classList.toggle("ngmap", !!this.ngLayer);
   }
 
   async onFlight(first) {
@@ -332,7 +350,8 @@ class EnrouteApp {
   }
 
   mapTypePicker(anchor) {
-    const p = popover(anchor, `<div class="fd-pop list">${Object.keys(MAP_TYPES).map(k => `<button data-m="${k}" class="${k === this.opts.mapType ? "on" : ""}"><b>${k}</b></button>`).join("")}</div>`, { side: "right", width: 220 });
+    const ng = NG.isConfigured() && settings().navigraphTiles;
+    const p = popover(anchor, `<div class="fd-pop list"><header>Map</header>${Object.entries(MAP_TYPES).map(([k, t]) => `<button data-m="${k}" class="${k === this.opts.mapType ? "on" : ""}"><b>${k}</b><span>${t.ng ? (ng ? "Navigraph enroute chart" : "Terrain map · Navigraph chart when connected") : t.base === "fd" ? "Shaded relief" : "Clean light map"}</span></button>`).join("")}</div>`, { side: "right", width: 300 });
     on(p.el, "click", "[data-m]", (e, b) => {
       closePopovers();
       this.opts.mapType = b.dataset.m;

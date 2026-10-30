@@ -23,7 +23,7 @@ export async function navigraph() {
   app.initializeApp({
     clientId: settings().navigraphClientId,
     clientSecret: settings().navigraphClientSecret,
-    scopes: [app.Scope.CHARTS],
+    scopes: settings().navigraphTiles ? [app.Scope.CHARTS, app.Scope.TILES] : [app.Scope.CHARTS],
   });
   const a = auth.getAuth({ keys: { accessToken: "rfb.ng.access", refreshToken: "rfb.ng.refresh" } });
   sdk = { auth: a, charts: charts.getChartsAPI(), CancelToken: auth.CancelToken };
