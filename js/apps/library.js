@@ -2,6 +2,7 @@
 import { $, $$, html, esc, on, listen, toast, panZoom, loadScript } from "../core/ui.js";
 import { files } from "../core/store.js";
 import { UI } from "../core/icons.js";
+import { I } from "../core/sf.js";
 
 export default { mount: (root, ctx) => new Library(root, ctx) };
 
@@ -13,7 +14,7 @@ class Library {
     this.root = root; this.ctx = ctx;
     this.folder = "docs/" + DOCS[0];
     this.view = "grid";
-    root.innerHTML = `<div class="lib"><aside><h1>Library</h1><div class="srch"><span>⌕</span><input placeholder="Search"></div><nav></nav></aside>
+    root.innerHTML = `<div class="lib"><aside><h1>Library</h1><div class="srch">${I.search}<input placeholder="Search"></div><nav></nav></aside>
       <main><header><button class="back hidden" data-a="close">‹ Back</button><h2></h2><div class="tb"><button data-a="view" title="View">▦</button><label class="add" title="Import PDF">${UI.plus}<input type="file" accept="application/pdf,image/*" multiple hidden></label></div></header><div class="content"></div></main></div>`;
     on(root, "click", "[data-f]", (e, b) => { this.folder = b.dataset.f; this.closeDoc(); this.render(); });
     on(root, "click", "[data-open]", (e, b) => this.openDoc(b.dataset.open));
@@ -34,8 +35,8 @@ class Library {
     const charts = await files.listPrefix("charts/");
     const aps = [...new Set(charts.map(c => c.folder.split("/")[1]))].sort();
     const counts = await Promise.all(DOCS.map(d => files.count("docs/" + d)));
-    $("nav", this.root).innerHTML = `<h5>Company Docs General</h5>${DOCS.map((d, i) => `<button data-f="docs/${esc(d)}" class="${this.folder === "docs/" + d ? "on" : ""}"><span class="fi">${UI.doc}</span>${esc(d)}<em>${counts[i]}</em></button>`).join("")}
-      <h5>AD Charts</h5>${aps.map(a => `<button data-f="charts/${a}" class="${this.folder === "charts/" + a ? "on" : ""}"><span class="fi">✈</span>${a}<em>${charts.filter(c => c.folder.split("/")[1] === a).length}</em></button>`).join("") || `<p class="hint">Import charts from the Charts app (MENU › Import).</p>`}`;
+    $("nav", this.root).innerHTML = `<h5>Company Docs General</h5>${DOCS.map((d, i) => `<button data-f="docs/${esc(d)}" class="${this.folder === "docs/" + d ? "on" : ""}"><span class="fi">${I.folder}</span>${esc(d)}<em>${counts[i]}</em></button>`).join("")}
+      <h5>AD Charts</h5>${aps.map(a => `<button data-f="charts/${a}" class="${this.folder === "charts/" + a ? "on" : ""}"><span class="fi">${I.plane}</span>${a}<em>${charts.filter(c => c.folder.split("/")[1] === a).length}</em></button>`).join("") || `<p class="hint">Import charts from the Charts app (MENU › Import).</p>`}`;
     if (this.docOpen) return;
     $("main h2", this.root).textContent = this.folder.split("/").slice(1).join(" › ");
     const list = (this.folder.startsWith("charts/") ? charts.filter(c => c.folder.startsWith(this.folder + "/")) : await files.list(this.folder))

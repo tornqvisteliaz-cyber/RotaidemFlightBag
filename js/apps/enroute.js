@@ -9,6 +9,9 @@ import { getAirport, searchAirports, runwayEnds } from "../core/airports.js";
 import { distNM, bearing, windComponents, destination } from "../core/geo.js";
 import { metar, taf, decodeMetar, CAT_COLOR } from "../core/wx.js";
 import * as M from "../core/map.js";
+import { fetchGround, groundLayer } from "../core/amm.js";
+import { simState, onSim } from "../core/sim.js";
+import { allAirports } from "../core/airports.js";
 
 export default { mount: (root, ctx, args) => new EnrouteApp(root, ctx, args) };
 
@@ -21,11 +24,12 @@ class EnrouteApp {
     this.locked = false;
     this.tool = null;
     this.render();
-    this.unsub = [listen("flight", () => this.onFlight())];
+    this.unsub = [listen("flight", () => this.onFlight()), onSim(s => this.onSim(s))];
     this.clock = setInterval(() => this.renderTop(), 20e3);
   }
   destroy() { this.unsub.forEach(u => u()); clearInterval(this.clock); clearInterval(this.playT); this.map?.remove(); }
   show() { setTimeout(() => this.map?.invalidateSize(), 50); }
+
   hide() { closePopovers(); }
 
   render() {
@@ -47,6 +51,7 @@ class EnrouteApp {
       <div class="fd-map"></div>
       <button class="fd-north" data-a="north"><span class="n">${UI.north}</span> North Up</button>
       <div class="fd-tools">
+        <button data-t="follow" title="Follow aircraft"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M20.5 3.5 L3.5 10.6 L11 12.9 L13.3 20.5Z" fill="currentColor"/></svg></button>
         <button data-t="settings" title="Map settings">${UI.gear}</button>
         <button data-t="draw" title="Draw">${UI.pen}</button>
         <button data-t="measure" title="Measure distance">${UI.ruler}</button>
@@ -58,6 +63,8 @@ class EnrouteApp {
         <button data-t="collapse" title="Hide toolbar">${UI.chevR}</button>
       </div>
       <div class="fd-measure hidden"></div>
+      <div class="fd-own hidden"></div>
+      <div class="fd-ground hidden"><input placeholder="Taxiway" maxlength="5" autocomplete="off" spellcheck="false"><span></span></div>
       <div class="fd-bottom">
         <button class="fd-wx" data-a="wx">Wx</button>
         <div class="fd-wxdesc"></div>
@@ -97,10 +104,19 @@ class EnrouteApp {
   // ---------------------------------------------------------------- map
   async initMap() {
     const f = getFlight();
-    this.map = M.createMap($(".fd-map", this.el), { center: f?.orig ? [f.orig.lat, f.orig.lon] : [5, 100], zoom: 5, maxZoom: 13 });
+    this.map = M.createMap($(".fd-map", this.el), { center: f?.orig ? [f.orig.lat, f.orig.lon] : [5, 100], zoom: 5, maxZoom: 18 });
+    this.own = M.ownship(this.map, { color: "#ffffff", outline: "#1f3fd6", size: 36 });
+    this.map.on("dragstart", () => { if (this.own.follow) { this.own.follow = false; $('[data-t="follow"]', this.el).classList.remove("on"); } });
+    this.map.on("moveend", () => this.checkGround());
+    const gi = $(".fd-ground input", this.el);
+    gi.addEventListener("input", () => {
+      const b = this.ground?.search(gi.value.trim().toUpperCase());
+      if (b) this.map.fitBounds(b, { padding: [60, 60], maxZoom: 16 });
+      if (!gi.value) this.ground?.clearSearch();
+    });
     this.map.createPane("terrain"); this.map.getPane("terrain").style.zIndex = 160;
     this.base = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}", {
-      maxNativeZoom: 8, maxZoom: 13, pane: "terrain", className: "fd-tiles", attribution: "Terrain © Esri, US NPS",
+      maxNativeZoom: 8, maxZoom: 11.99, pane: "terrain", className: "fd-tiles", attribution: "Terrain © Esri, US NPS",
     });
     this.land = await M.addLand(this.map, { land: "#ece6cf", borders: "#a3a3a3", dash: "3 3" }).catch(() => null);
     this.applyBase();
@@ -390,6 +406,14 @@ class EnrouteApp {
   // ---------------------------------------------------------------- tools
   toolAct(t, b) {
     if (t === "collapse") { this.el.classList.toggle("tools-hidden"); return; }
+    if (t === "follow") {
+      const s = simState();
+      if (!s.connected) return toast(s.status || "No aircraft connected – see Settings › Simulator");
+      this.own.follow = !this.own.follow;
+      b.classList.toggle("on", this.own.follow);
+      if (this.own.follow) this.map.setView([s.lat, s.lon], s.onGround ? 15 : Math.max(this.map.getZoom(), 7));
+      return;
+    }
     if (t === "terrain") { this.opts.terrain = !this.opts.terrain; b.classList.toggle("on", this.opts.terrain); this.applyBase(); this.apply(); return; }
     if (t === "atc") { this.opts.atc = !this.opts.atc; b.classList.toggle("on", this.opts.atc); if (this.opts.atc && !this.lyr.atc) this.loadAtc(); this.apply(); return; }
     if (t === "clear") { this.drawings.clearLayers(); this.rings.clearLayers(); this.endTool(); toast("Drawings cleared"); return; }
@@ -431,6 +455,49 @@ class EnrouteApp {
       }
     }
   }
+  // ---------------------------------------------------------------- live aircraft
+  onSim(s) {
+    if (!this.map) return;
+    this.own.update(s);
+    const box = $(".fd-own", this.el);
+    if (!s.connected) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    const r = v => (v == null ? "—" : Math.round(v));
+    box.innerHTML = `<div><small>GS</small><b>${r(s.gs)}</b></div><div><small>${s.onGround ? "ELEV" : "ALT"}</small><b>${s.alt == null ? "—" : s.alt >= 18000 ? "FL" + Math.round(s.alt / 100) : fmtNum(s.alt)}</b></div>
+      <div><small>TRK</small><b>${s.trk == null && s.hdg == null ? "—" : String(r(s.onGround ? s.hdg : s.trk ?? s.hdg) % 360).padStart(3, "0")}°</b></div><div><small>V/S</small><b>${s.onGround ? "GND" : (s.vs > 0 ? "+" : "") + fmtNum(Math.round((s.vs || 0) / 50) * 50)}</b></div>
+      <div class="src"><i></i>${esc(s.source || "")}</div>`;
+    if (s.onGround && this.map.getZoom() >= 12) this.checkGround();
+  }
+
+  /** Show the Lido-style ground map when zoomed in near an airport. */
+  async checkGround() {
+    const z = this.map.getZoom();
+    const near = z >= 12.5;
+    this.el.classList.toggle("ground", near);
+    $(".fd-ground", this.el).classList.toggle("hidden", !near || !this.ground);
+    if (!near) { if (this.ground) { this.ground.remove(); this.ground = null; this.groundIcao = null; this.map.getContainer().style.background = ""; } return; }
+    const c = this.map.getCenter();
+    const aps = await allAirports();
+    let best = null, bd = 1e9;
+    for (const a of aps) {
+      if (a[8] < 1 || Math.abs(a[5] - c.lat) > 0.2) continue;
+      const d = distNM(c.lat, c.lng, a[5], a[6]);
+      if (d < bd) { bd = d; best = a; }
+    }
+    if (!best || bd > 6 || best[0] === this.groundIcao || this.groundLoading === best[0]) return;
+    this.groundLoading = best[0];
+    try {
+      const data = await fetchGround(best[0], best[5], best[6]);
+      if (this.map.getZoom() < 12.5) return;
+      this.ground?.remove();
+      this.ground = groundLayer(this.map, data, { theme: "day" }).addTo(this.map);
+      this.groundIcao = best[0];
+      $(".fd-ground", this.el).classList.remove("hidden");
+      $(".fd-ground span", this.el).textContent = this.ground.empty ? `${best[0]} · no taxiway data in OSM` : `${best[0]} · ${this.ground.refs.length} taxiways`;
+    } catch { toast(`Ground map for ${best[0]} unavailable`); }
+    finally { this.groundLoading = null; }
+  }
+
   startDraw() {
     const map = this.map, el = map.getContainer();
     map.dragging.disable();

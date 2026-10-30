@@ -1,0 +1,97 @@
+/* ==================================================================
+   System glyphs
+   ================================================================== */
+.sf { width: 1em; height: 1em; display: inline-block; vertical-align: -.14em; flex: none; }
+.set .sic .sf { width: 18px; height: 18px; color: #fff; }
+.set .srch .sf, .as-search .sf, .wxa .srch .sf, .lib .srch .sf { width: 16px; height: 16px; }
+.set .row.slider .sf { width: 22px; height: 22px; color: #8e8e93; }
+.set .row.slider .sf:last-child { width: 28px; height: 28px; }
+.cc-sq span .sf { width: 26px; height: 26px; }
+.cc-sq { gap: 6px; }
+.cc-slider i .sf { width: 24px; height: 24px; }
+.cc-wide > span .sf { width: 22px; height: 22px; color: #fff; }
+.cc-wide > span.live { background: #34c759; }
+.cc-wide[data-cc="sim"] > span { background: #8e8e93; }
+.cc-wide[data-cc="sim"] > span.live { background: #34c759; }
+.ctx-menu button span .sf { width: 19px; height: 19px; }
+.as aside button span .sf { width: 20px; height: 20px; }
+.wxa .hd button .sf { width: 18px; height: 18px; }
+.wxa .hd button { display: grid; place-items: center; }
+.lib nav .fi .sf { width: 19px; height: 19px; }
+.opt-head .cog .sf { width: 26px; height: 26px; color: #d8d8dc; }
+.set .pairhero .dev .sf { width: 34px; height: 34px; }
+.clk nav { gap: 70px; padding: 8px 0 26px; }
+.clk nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; font-weight: 500; }
+.clk nav button .sf { width: 26px; height: 26px; }
+
+/* status bar: small live indicator next to the location arrow */
+#statusbar.sim-live .sb-right > svg:first-child { color: #34c759; }
+
+/* ==================================================================
+   Own-ship
+   ================================================================== */
+.ownship svg { display: block; transition: transform .25s linear; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+
+/* Enroute live data strip */
+.fd-own { position: absolute; left: 124px; bottom: 74px; z-index: 600; display: flex; align-items: stretch; border-radius: 12px; overflow: hidden; background: rgba(18,18,22,.86); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.fd-own.hidden { display: none; }
+.fd-own > div { padding: 6px 14px; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.1); min-width: 74px; }
+.fd-own small { font-size: 10px; font-weight: 700; color: #8e8e93; letter-spacing: .5px; }
+.fd-own b { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; color: #fff; }
+.fd-own .src { flex-direction: row; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: #c7c7cc; border-right: 0; min-width: 0; }
+.fd-own .src i { width: 8px; height: 8px; border-radius: 50%; background: #34c759; box-shadow: 0 0 8px #34c759; }
+.fd-tools [data-t="follow"] svg { width: 22px; height: 22px; }
+
+/* Enroute: ground mode */
+.fd.ground .leaflet-land-pane { display: none; }
+.fd.ground .fd-map { background: #f1f0eb; }
+.fd-ground { position: absolute; left: 50%; top: calc(var(--sb-h) + 72px); transform: translateX(-50%); z-index: 600; display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; border-radius: 12px; background: rgba(255,255,255,.95); color: #3a3a3c; font-size: 13px; box-shadow: 0 2px 12px rgba(0,0,0,.2); }
+.fd-ground.hidden { display: none; }
+.fd-ground input { width: 110px; padding: 7px 10px; border: 0; border-radius: 8px; background: #efeff4; font-size: 15px; font-weight: 600; text-transform: uppercase; outline: none; }
+
+/* ==================================================================
+   Airport moving map (Lido style)
+   ================================================================== */
+.c-amm { position: absolute; inset: 0; display: none !important; background: #f1f0eb; }
+.charts.mode-ad.amm-on .c-amm { display: block !important; }
+.charts.amm-on .c-viewer { display: none !important; }
+.c-amm-map { position: absolute; inset: 0; background: #f1f0eb; }
+.charts.night .c-amm-map { background: #17191c; }
+.c-amm-bar { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 700; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.c-amm-bar > * { pointer-events: auto; }
+.c-amm-bar .srch { display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 40px; border-radius: 10px; background: rgba(27,29,37,.9); color: #9a9eaa; backdrop-filter: blur(10px); }
+.c-amm-bar .srch input { width: 92px; border: 0; background: none; color: #fff; font-size: 16px; font-weight: 700; text-transform: uppercase; outline: none; }
+.c-amm-bar .chips { flex: 1; display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
+.c-amm-bar .chips::-webkit-scrollbar { display: none; }
+.c-amm-bar .chips button { flex: none; min-width: 34px; height: 30px; padding: 0 8px; border: 0; border-radius: 4px; background: #1a1a1a; color: #f2c200; font: 700 14px "Helvetica Neue", Arial, sans-serif; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.c-amm-bar .chips button.on { background: #d22fc9; color: #fff; }
+.c-amm-bar > button { width: 40px; height: 40px; border: 0; border-radius: 10px; background: rgba(27,29,37,.9); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.c-amm-bar > button.on { background: #2e9d8e; }
+.c-amm-msg { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 700; display: none; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 12px; background: rgba(255,255,255,.95); color: #333; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+
+.amm-twy-lbl span { display: inline-block; transform: translate(-50%, -50%); padding: 1px 5px; background: #1a1a1a; color: #f2c200; font: 700 12px "Helvetica Neue", Arial, sans-serif; border: 1px solid #f2c200; border-radius: 2px; white-space: nowrap; }
+.amm-rwy span { display: inline-block; transform: translate(-50%, -50%); padding: 2px 6px; background: #c8102e; color: #fff; font: 700 13px "Helvetica Neue", Arial, sans-serif; border-radius: 2px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.amm-stand span { display: inline-block; transform: translate(-50%, -50%); font: 600 10px "Helvetica Neue", Arial, sans-serif; color: #2d2f33; white-space: nowrap; text-shadow: 0 0 2px #f1f0eb, 0 0 2px #f1f0eb; }
+.charts.night .amm-stand span { color: #d0d3d8; text-shadow: 0 0 2px #17191c, 0 0 2px #17191c; }
+.amm-hold i { display: block; width: 10px; height: 10px; border-radius: 50%; background: #e0362c; border: 2px solid #fff; }
+.amm-hide-twy .amm-twy-lbl, .amm-hide-hold .amm-hold, .amm-hide-stand .amm-stand { display: none; }
+.amm-z-hi .amm-stand span { font-size: 12px; }
+.amm-z-hi .amm-twy-lbl span { font-size: 14px; }
+
+/* ==================================================================
+   Settings › Simulator
+   ================================================================== */
+.set .simhero { padding: 18px; }
+.set .simstat { display: flex; align-items: center; gap: 14px; }
+.set .simstat i { width: 14px; height: 14px; border-radius: 50%; background: #ff9f0a; flex: none; }
+.set .simhero.live .simstat i { background: #34c759; box-shadow: 0 0 0 5px rgba(52,199,89,.18); }
+.set .simstat b { display: block; font-size: 19px; }
+.set .simstat small { color: #8e8e93; font-size: 13px; }
+.set .simgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+.set .simgrid:empty { display: none; }
+.set .simgrid div { background: #f2f2f7; border-radius: 10px; padding: 8px 12px; }
+.set .simgrid small { display: block; font-size: 11.5px; color: #8e8e93; }
+.set .simgrid b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.set .steps { padding: 6px 16px; font-size: 14.5px; line-height: 1.5; color: #3c3c43; }
+.set .steps p { margin: 8px 0; }
+.set .steps code { background: #f2f2f7; padding: 1px 6px; border-radius: 5px; font-size: 13px; }

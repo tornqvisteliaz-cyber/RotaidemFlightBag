@@ -12,6 +12,8 @@ import { metar, decodeMetar } from "../core/wx.js";
 import * as NG from "../core/navigraph.js";
 import { airportDiagram, airportInfo, PAGE_W, PAGE_H } from "../core/genchart.js";
 import * as M from "../core/map.js";
+import { fetchGround, groundLayer } from "../core/amm.js";
+import { simState, onSim } from "../core/sim.js";
 
 const CATS = ["GEN", "SID", "STAR", "APPR", "TAXI"];
 const CAT_NAMES = { GEN: "GEN", SID: "SID", STAR: "STAR", APPR: "APPR", TAXI: "TAXI" };
@@ -36,6 +38,7 @@ class ChartsApp {
     this.unsub = [
       listen("flight", () => { this.renderTop(); this.refreshRoute(); }),
       listen("navigraph", () => { if (this.icao) this.loadAirport(this.icao, this.role, true); this.renderTop(); }),
+      onSim(st => { this.own?.update(st); this.ammOwn?.update(st); }),
     ];
     if (args) this.show(args);
   }
@@ -68,6 +71,12 @@ class ChartsApp {
           <div class="c-north">${UI.north}<b>N</b></div>
           <div class="c-scalebar"><div class="bar"></div><div class="lbls"><span>0</span><span class="mid"></span><span class="end"></span></div></div>
         </div>
+        <div class="c-amm ad-only"><div class="c-amm-map"></div>
+          <div class="c-amm-bar"><div class="srch"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg><input placeholder="Taxiway" maxlength="5" autocomplete="off" spellcheck="false"></div>
+            <div class="chips"></div>
+            <button data-amm="follow" title="Follow aircraft"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M20.5 3.5 L3.5 10.6 L11 12.9 L13.3 20.5Z" fill="currentColor"/></svg></button>
+            <button data-amm="fit" title="Whole airport">${UI.fit}</button></div>
+          <div class="c-amm-msg"></div></div>
         <div class="c-viewer ad-only">
           <div class="c-page"><div class="c-rot"></div></div>
           <div class="c-empty"></div>
@@ -101,6 +110,8 @@ class ChartsApp {
     on(el, "click", "[data-cat]", (e, b) => this.chartList(b.dataset.cat, b));
     on(el, "click", "[data-role]", (e, b) => this.pickRole(b.dataset.role, b));
     on(el, "click", "[data-enr]", (e, b) => this.enrToggle(b.dataset.enr, b));
+    on(el, "click", "[data-amm]", (e, b) => this.ammAct(b.dataset.amm, b));
+    on(el, "click", "[data-twy]", (e, b) => { const i = $(".c-amm-bar input", el); i.value = b.dataset.twy; i.dispatchEvent(new Event("input")); });
   }
 
   show(args) {
@@ -112,7 +123,7 @@ class ChartsApp {
     }
   }
   hide() { closePopovers(); }
-  destroy() { this.unsub.forEach(u => u()); this.map?.remove(); clearInterval(this.atcTimer); }
+  destroy() { this.unsub.forEach(u => u()); this.map?.remove(); this.amm?.remove(); clearInterval(this.atcTimer); }
 
   setMode(m) {
     this.mode = m;
@@ -143,7 +154,7 @@ class ChartsApp {
         <button class="c-tab apt" data-act="airports"><b class="mag">${esc(this.icao || "-")}</b><b class="mag sm">${esc(this.ap?.iata || "")}</b><span>${esc(this.role === "OTHER" ? "AD" : this.role || "")}</span></button>
         ${ch ? `<button class="c-tab chart" data-cat="${ch.cat}"><b>${esc(CAT_NAMES[ch.cat])}</b><span>[${esc(ch.index || "—")}]</span></button>` : ""}
         <div class="c-title">${ch ? esc(ch.title || ch.name) : this.icao ? `<span class="dim">${esc(this.ap?.name || "")}</span>` : ""}</div>
-        ${ch?.source === "navigraph" ? `<div class="c-src">Navigraph · Jeppesen</div>` : ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
+        ${ch?.source === "navigraph" ? `<div class="c-src">Navigraph · Jeppesen</div>` : ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
     }
   }
 
@@ -159,7 +170,7 @@ class ChartsApp {
         <button class="c-rt" data-enr="airspace"><span class="lbl">AIRSPACE</span><b class="cy">${this.enr.airspace}</b></button>
         <button class="c-rt" data-enr="com"><span class="lbl">COM</span><b class="cy">${this.enr.com ? "ON" : "OFF"}</b></button>
         <button class="c-rt" data-enr="era"><span class="lbl">ERA</span><b class="cy">${this.enr.era ? "ON" : "OFF"}</b></button>
-        <div class="c-rt split"><button data-enr="trk"><span class="red">TRK</span> <span class="gn">MAP</span></button><button data-enr="pos"><span class="gn">POS</span></button><b class="cy pan">PAN</b></div>`;
+        <div class="c-rt split"><button data-enr="trk"><span class="red">TRK</span> <span class="gn">MAP</span></button><button data-enr="pos"><span class="${this.own?.follow ? "cy" : "gn"}">POS</span></button><b class="cy pan">${this.own?.follow ? "POS" : "PAN"}</b></div>`;
       this.updateScale();
     } else {
       const cats = ["GEN", this.role === "FROM" ? "SID" : "STAR", "APPR", "TAXI"];
@@ -189,7 +200,7 @@ class ChartsApp {
       case "airports": return this.airportsPop(b);
       case "docs": return this.docsPanel(b);
       case "adinfo": return this.autoSelect("GEN", true, "10-1P");
-      case "night": this.night = !this.night; setSetting("chartTheme", this.night ? "night" : "day"); this.el.classList.toggle("night", this.night); if (this.chart) this.display(this.chart, true); return;
+      case "night": this.night = !this.night; setSetting("chartTheme", this.night ? "night" : "day"); this.el.classList.toggle("night", this.night); this.ammLayer?.setTheme(this.night ? "night" : "day"); if (this.chart && this.chart.source !== "amm") this.display(this.chart, true); return;
       case "rotate": this.rot = (this.rot + 90) % 360; if (this.chart) this.display(this.chart, true); return;
       case "fit": return this.fit();
       case "bookmark": return this.bookmark();
@@ -263,6 +274,7 @@ class ChartsApp {
   generated(ap) {
     const f = getFlight();
     return [
+      { source: "amm", id: "amm-" + ap.icao, icao: ap.icao, cat: "TAXI", index: "AMM", name: "AIRPORT MOVING MAP", short: "AMM", procs: [], runways: [] },
       { source: "gen", id: "gen-109-" + ap.icao, icao: ap.icao, cat: "TAXI", index: "10-9", name: "AIRPORT DIAGRAM", short: "10-9 AD", procs: [], runways: [] },
       { source: "gen", id: "gen-101p-" + ap.icao, icao: ap.icao, cat: "GEN", index: "10-1P", name: "AIRPORT INFORMATION", short: "10-1P INFO", procs: [], runways: [] },
     ].map(c => ({ ...c, airac: f?.airac }));
@@ -284,7 +296,7 @@ class ChartsApp {
     const rwy = this.role === "FROM" ? f?.orig?.rwy : this.role === "TO" ? f?.dest?.rwy : null;
     const proc = this.role === "FROM" ? f?.sid : this.role === "TO" ? f?.star : null;
     const pick = (proc && list.find(c => c.procs.some(p => p.startsWith(proc)) || c.name.includes(proc))) ||
-      (rwy && list.find(c => c.runways.includes(rwy))) || list.find(c => c.source !== "gen") || list[0];
+      (rwy && list.find(c => c.runways.includes(rwy))) || list.find(c => c.source === "navigraph" || c.source === "local") || list[0];
     if (pick) this.display(pick);
     else if (display) this.chartList(cat, $(`[data-cat="${cat}"]`, this.el));
   }
@@ -318,6 +330,8 @@ class ChartsApp {
     this.chart = chart;
     (this.sel[chart.icao] ||= {})[chart.cat] = chart;
     this.renderTop(); this.renderRight();
+    this.el.classList.toggle("amm-on", chart.source === "amm");
+    if (chart.source === "amm") return this.showAmm(chart);
     const rot = $(".c-rot", this.el), empty = $(".c-empty", this.el);
     empty.innerHTML = `<div class="spinner"></div>`; empty.style.display = "grid";
     rot.classList.toggle("invert", false);
@@ -350,6 +364,53 @@ class ChartsApp {
       empty.innerHTML = `<div class="c-err">Could not display chart<br><small>${esc(e.message)}</small></div>`;
     }
   }
+  // ---------------------------------------------------------------- airport moving map
+  async showAmm(chart) {
+    const box = $(".c-amm-map", this.el), msg = $(".c-amm-msg", this.el);
+    if (!this.amm) {
+      this.amm = M.createMap(box, { center: [this.ap.lat, this.ap.lon], zoom: 14, minZoom: 11, maxZoom: 19 });
+      this.amm.attributionControl.addAttribution("Ground data © OpenStreetMap contributors");
+      this.ammOwn = M.ownship(this.amm, { color: "#ffffff", outline: "#d22fc9", size: 40, trailColor: "#d22fc9" });
+      this.amm.on("dragstart", () => { this.ammOwn.follow = false; $('[data-amm="follow"]', this.el).classList.remove("on"); });
+      $(".c-amm-bar input", this.el).addEventListener("input", e => {
+        const v = e.target.value.trim().toUpperCase();
+        $$(".c-amm-bar [data-twy]", this.el).forEach(x => x.classList.toggle("on", x.dataset.twy === v));
+        const b = v && this.ammLayer?.search(v);
+        if (b) this.amm.fitBounds(b, { padding: [50, 50], maxZoom: 17 });
+        if (!v) this.ammLayer?.clearSearch();
+      });
+    }
+    setTimeout(() => this.amm.invalidateSize(), 30);
+    if (this.ammIcao === chart.icao) return;
+    this.ammLayer?.remove(); this.ammLayer = null;
+    this.ammIcao = chart.icao;
+    this.amm.setView([this.ap.lat, this.ap.lon], 14);
+    msg.innerHTML = `<div class="spinner dark"></div><span>Loading ground data for ${esc(chart.icao)}…</span>`; msg.style.display = "flex";
+    try {
+      const data = await fetchGround(chart.icao, this.ap.lat, this.ap.lon);
+      if (this.ammIcao !== chart.icao) return;
+      this.ammLayer = groundLayer(this.amm, data, { theme: this.night ? "night" : "day" }).addTo(this.amm);
+      if (this.ammLayer.bounds) this.amm.fitBounds(this.ammLayer.bounds, { padding: [20, 20] });
+      $(".c-amm-bar .chips", this.el).innerHTML = this.ammLayer.refs.slice(0, 40).map(r => `<button data-twy="${esc(r)}">${esc(r)}</button>`).join("");
+      msg.style.display = this.ammLayer.empty ? "flex" : "none";
+      msg.innerHTML = `<span>No taxiway data for ${esc(chart.icao)} in OpenStreetMap – showing what is mapped.</span>`;
+      this.ammOwn.update(simState());
+    } catch (e) {
+      msg.innerHTML = `<span>Ground data unavailable (${esc(e.message)}). Check the connection and try again.</span>`;
+      this.ammIcao = null;
+    }
+  }
+  ammAct(a, b) {
+    if (a === "fit" && this.ammLayer?.bounds) { this.ammOwn.follow = false; $('[data-amm="follow"]', this.el).classList.remove("on"); this.amm.fitBounds(this.ammLayer.bounds, { padding: [20, 20] }); }
+    if (a === "follow") {
+      const s = simState();
+      if (!s.connected) return toast(s.status || "No aircraft connected");
+      this.ammOwn.follow = !this.ammOwn.follow;
+      b.classList.toggle("on", this.ammOwn.follow);
+      if (this.ammOwn.follow) this.amm.setView([s.lat, s.lon], 16.5);
+    }
+  }
+
   setModeIfNeeded() { if (this.mode !== "ad") this.setMode("ad"); }
   fit() { if (this.pageSize) this.pz.fit(this.pageSize.w, this.pageSize.h, this.pageSize.w > this.pageSize.h ? "contain" : "contain"); }
 
@@ -548,6 +609,8 @@ class ChartsApp {
     this.map = M.createMap($(".c-map", this.el), { center: f?.orig ? [f.orig.lat, f.orig.lon] : [5, 102], zoom: 5 });
     this.map.attributionControl.addAttribution("Natural Earth · OurAirports · VATSpy");
     this.map.on("zoomend moveend", () => this.updateScale());
+    this.own = M.ownship(this.map, { color: "#ffffff", outline: "#d22fc9", size: 32, trailColor: "#d22fc9" });
+    this.map.on("dragstart", () => { if (this.own.follow) { this.own.follow = false; this.renderRight(); } });
     try { await M.addLand(this.map, { land: "#f3eed9", borders: "#8d8d8d" }); } catch { toast("Map: offline – land data unavailable"); }
     this.lyr = {};
     this.lyr.ad = await M.airportLayer(this.map, { highlight: this.flightAirports(), color: "#2b7d69" });
@@ -642,7 +705,11 @@ class ChartsApp {
       if (this.enr.era && !getFlight()?.enrouteAlts?.length) toast("No enroute alternates in the OFP");
     }
     if (k === "trk") toast("Track-up needs a live aircraft position – map is north-up");
-    if (k === "pos") { if (this.lyr.route?.bounds?.isValid()) this.map.fitBounds(this.lyr.route.bounds, { padding: [40, 40] }); }
+    if (k === "pos") {
+      const s = simState();
+      if (s.connected) { this.own.follow = !this.own.follow; if (this.own.follow) this.map.setView([s.lat, s.lon], Math.max(this.map.getZoom(), 7)); }
+      else { toast("No aircraft position – showing the route"); if (this.lyr.route?.bounds?.isValid()) this.map.fitBounds(this.lyr.route.bounds, { padding: [40, 40] }); }
+    }
     this.applyLayers();
     this.renderRight();
   }

@@ -471,6 +471,7 @@
 .lib .file small { font-size: 12px; color: #8e8e93; }
 .lib .file .del { position: absolute; top: -6px; right: 10px; width: 30px; height: 30px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.2); color: #ff3b30; display: none; place-items: center; }
 .lib .file:hover .del { display: grid; }
+@media (hover: none) { .lib .file .del { display: grid; } }
 .lib .file .del svg { width: 16px; }
 .lib .empty { grid-column: 1 / -1; text-align: center; color: #8e8e93; padding-top: 120px; }
 .lib .empty .big svg { width: 70px; height: 70px; color: #c7c7cc; }

@@ -2,3 +2,10 @@ api/config.php
 .claude/
 node_modules/
 .DS_Store
+__pycache__/
+.venv-build/
+build/
+dist/
+*.spec
+assets/app.ico
+build.log

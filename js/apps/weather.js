@@ -7,6 +7,7 @@ import { getAirport, searchAirports, runwayEnds } from "../core/airports.js";
 import { windComponents } from "../core/geo.js";
 import { metar, taf, decodeMetar, CAT_COLOR } from "../core/wx.js";
 import * as M from "../core/map.js";
+import { I } from "../core/sf.js";
 
 export default { mount: (root, ctx) => new WeatherApp(root, ctx) };
 
@@ -14,8 +15,8 @@ class WeatherApp {
   constructor(root, ctx) {
     this.root = root; this.ctx = ctx;
     this.favs = kv.get("wx.favs", []);
-    root.innerHTML = `<div class="wxa"><aside><div class="hd"><h1>Weather</h1><button data-a="refresh" title="Refresh">↻</button></div>
-      <div class="srch"><span>⌕</span><input placeholder="Search for an airport"></div><div class="sres"></div><div class="list"></div></aside><main></main></div>`;
+    root.innerHTML = `<div class="wxa"><aside><div class="hd"><h1>Weather</h1><button data-a="refresh" title="Refresh">${I.refresh}</button></div>
+      <div class="srch">${I.search}<input placeholder="Search for an airport"></div><div class="sres"></div><div class="list"></div></aside><main></main></div>`;
     on(root, "click", "[data-st]", (e, b) => this.select(b.dataset.st));
     on(root, "click", "[data-a]", (e, b) => this.act(b.dataset.a, b));
     const inp = $(".srch input", root);

@@ -1,0 +1,45 @@
+// System glyphs drawn in the style of iPadOS symbols (filled, 24×24, currentColor).
+const g = (d, vb = "0 0 24 24") => `<svg class="sf" viewBox="${vb}" aria-hidden="true" fill="currentColor">${d}</svg>`;
+
+export const I = {
+  gear: g(`<path d="M10.3 2h3.4l.5 2.6 1.6.7 2.2-1.5 2.4 2.4-1.5 2.2.7 1.6 2.6.5v3.4l-2.6.5-.7 1.6 1.5 2.2-2.4 2.4-2.2-1.5-1.6.7-.5 2.6h-3.4l-.5-2.6-1.6-.7-2.2 1.5-2.4-2.4 1.5-2.2-.7-1.6L2 13.7v-3.4l2.6-.5.7-1.6-1.5-2.2 2.4-2.4 2.2 1.5 1.6-.7zM12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2z" fill-rule="evenodd"/>`),
+  sun: g(`<circle cx="12" cy="12" r="4.6"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></g>`),
+  sunDim: g(`<circle cx="12" cy="12" r="3.6"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4.5v1M12 18.5v1M4.5 12h1M18.5 12h1M6.7 6.7l.7.7M16.6 16.6l.7.7M6.7 17.3l.7-.7M16.6 7.4l.7-.7"/></g>`),
+  moon: g(`<path d="M14.6 2.4A9.6 9.6 0 1 0 21.6 15a7.7 7.7 0 0 1-7-12.6z"/>`),
+  nightShift: g(`<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M14 3.2A9 9 0 0 1 20.8 10H14z" opacity=".5"/>`),
+  contrast: g(`<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2v16a8 8 0 0 1 0-16z"/>`),
+  expand: g(`<path d="M4 4h6v2H7.4l3.3 3.3-1.4 1.4L6 7.4V10H4zm16 0v6h-2V7.4l-3.3 3.3-1.4-1.4L16.6 6H14V4zM4 20v-6h2v2.6l3.3-3.3 1.4 1.4L7.4 18H10v2zm16 0h-6v-2h2.6l-3.3-3.3 1.4-1.4 3.3 3.3V14h2z"/>`),
+  timer: g(`<path d="M9 1.5h6v2H9z"/><path d="M12 4.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zm1 8.9V8h-2v6.2l3.9 2.3 1-1.7z" fill-rule="evenodd"/>`),
+  arrows: g(`<path d="M7 3 2.5 7.5 7 12V9h9V6H7zM17 12v3H8v3h9v3l4.5-4.5z"/>`),
+  search: g(`<path d="M10.5 3a7.5 7.5 0 0 1 6 12l4.7 4.7-1.5 1.5-4.7-4.7A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/>`),
+  ipad: g(`<path d="M6 1.5h12A2.5 2.5 0 0 1 20.5 4v16a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 20V4A2.5 2.5 0 0 1 6 1.5zm0 2a.5.5 0 0 0-.5.5v16c0 .3.2.5.5.5h12c.3 0 .5-.2.5-.5V4a.5.5 0 0 0-.5-.5zm4 15h4v1.5h-4z"/>`),
+  plane: g(`<path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/>`),
+  today: g(`<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v6h14V5zm0 8v6h6v-6zm8 0v6h6v-6z"/>`),
+  apps: g(`<path d="M4 3h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm10 0h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM4 13h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1zm13 0a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"/>`),
+  stack: g(`<path d="M12 2 2 7l10 5 10-5zM2 12l10 5 10-5-2.2-1.1L12 14.8l-7.8-3.9zm0 5 10 5 10-5-2.2-1.1L12 19.8l-7.8-3.9z"/>`),
+  download: g(`<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 4v7.6l2.8-2.8 1.4 1.4L12 17.4l-5.2-5.2 1.4-1.4 2.8 2.8V6z"/>`),
+  refresh: g(`<path d="M12 4a8 8 0 0 1 7.4 5H17v2h6V5h-2v2.3A10 10 0 1 0 22 12h-2a8 8 0 1 1-8-8z"/>`),
+  globe: g(`<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 9h-3a15 15 0 0 0-1.3-6 8 8 0 0 1 4.3 6zM12 4.1c.9 1.2 1.7 3.7 1.9 6.9h-3.8c.2-3.2 1-5.7 1.9-6.9zM9.4 5a15 15 0 0 0-1.3 6h-3a8 8 0 0 1 4.3-6zM5.1 13h3a15 15 0 0 0 1.3 6 8 8 0 0 1-4.3-6zm6.9 6.9c-.9-1.2-1.7-3.7-1.9-6.9h3.8c-.2 3.2-1 5.7-1.9 6.9zm2.6-.9a15 15 0 0 0 1.3-6h3a8 8 0 0 1-4.3 6z"/>`),
+  alarm: g(`<path d="M12 4a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm1 9.4V8h-2v6.2l3.9 2.3 1-1.7zM5.6 1.6 7 3 3 7 1.6 5.6zM18.4 1.6 22.4 5.6 21 7l-4-4z" fill-rule="evenodd"/>`),
+  stopwatch: g(`<path d="M9 1h6v2H9z"/><path d="M12 4a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm1 2.1V13h-2V6.1z" fill-rule="evenodd"/>`),
+  bed: g(`<path d="M3 5h2v8h6V8h7a3 3 0 0 1 3 3v8h-2v-2H5v2H3zm5 3a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/>`),
+  wallpaper: g(`<path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm1 2v10.6l4-4 3 3 4-5 3 3.7V5zm3.5 1a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/>`),
+  battery: g(`<path d="M3 7h15a2 2 0 0 1 2 2v1h1.5v4H20v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm1 2.5v5h11v-5z"/>`),
+  grid: g(`<path d="M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z"/>`),
+  person: g(`<path d="M12 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 12c5 0 8.5 2.4 8.5 5.5V22h-17v-2.5C3.5 16.4 7 14 12 14z"/>`),
+  ruler: g(`<path d="M2 7h20v10H2zm2 2v6h16V9h-1.5v3h-1.5V9h-1.5v2h-1.5V9h-1.5v3h-1.5V9H9.5v2H8V9H6.5v3H5V9z"/>`),
+  cloud: g(`<path d="M7 19a5 5 0 0 1-.6-10A6.5 6.5 0 0 1 19 9.6 4.7 4.7 0 0 1 17.5 19z"/>`),
+  disk: g(`<path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm7 4a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 3.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill-rule="evenodd"/>`),
+  info: g(`<path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm1 8h-2v7h2zm-1-4a1.3 1.3 0 1 0 0 2.6A1.3 1.3 0 0 0 12 6z"/>`),
+  doc: g(`<path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V8h4.5z"/>`),
+  folder: g(`<path d="M3 5a2 2 0 0 1 2-2h4.6l2 2H19a2 2 0 0 1 2 2v1H3zm0 5h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>`),
+  arrowUpRight: g(`<path d="M7 5h12v12h-2V8.4l-10.3 10.3-1.4-1.4L15.6 7H7z"/>`),
+  move: g(`<path d="M12 2 8 6h3v5H6V8l-4 4 4 4v-3h5v5H8l4 4 4-4h-3v-5h5v3l4-4-4-4v3h-5V6h3z"/>`),
+  pencil: g(`<path d="M15.6 3.6a2 2 0 0 1 2.8 0l2 2a2 2 0 0 1 0 2.8L9 19.8 3 21l1.2-6zM14 7l3 3 1.6-1.6-3-3z"/>`),
+  minusCircle: g(`<path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm5 9H7v2h10z"/>`),
+  location: g(`<path d="M21 3 3 10.5l7.6 2.9L13.5 21z"/>`),
+  check: g(`<path d="M9.5 16.2 4.8 11.5l-1.4 1.4 6.1 6.1L20.6 8l-1.4-1.4z"/>`),
+};
+
+/** iPadOS Settings-style rounded square icon. */
+export const tile = (bg, glyph) => `<span class="sic" style="background:${bg}">${glyph}</span>`;

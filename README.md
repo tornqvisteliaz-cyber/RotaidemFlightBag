@@ -8,15 +8,28 @@ An iPad electronic flight bag for flight simulation, modelled on the apps airlin
 
 | App | What it does |
 | --- | --- |
-| **Charts** | Airline-style chart viewer. ENR map with your route, airports, VOR/NDB, FIRs, radar and SIGMETs; aerodrome view with GEN / SID / STAR / APPR / TAXI, USER bookmarks, day/night, rotate. Jeppesen charts through **Navigraph**, your own PDF charts, and generated 10-9 airport diagram / 10-1P airport information pages for every airport. Documents panel for company docs. |
-| **Enroute** | Moving-map enroute chart on terrain: route with airway/FL boxes, FIR boundaries, radar timeline with playback, SIGMETs, live VATSIM ATC frequencies, runway/airport info sheets, measuring, drawing and range rings. Jumps straight into Charts for SID/STAR/APP/TAXI. |
-| **OPT** | Onboard performance tool for B737-800 / -900ER / -9: TKO Dispatch, TKO All Engine, LDG Dispatch, LDG Enroute. Assumed temperature, N1, V-speeds, field/climb limits, landing distances per autobrake. Prefills from the OFP and live METAR, compares with the SimBrief TLR. Simplified model. |
+| **Charts** | Airline-style chart viewer. Every airport has a live **Airport Moving Map** (TAXI › AMM) in the style of Lido airport charts: runways, yellow taxiway guidelines, aprons, stands, holding points, taxiway sign labels and taxiway search, with your aircraft on it. ENR map with your route, airports, VOR/NDB, FIRs, radar and SIGMETs; aerodrome view with GEN / SID / STAR / APPR / TAXI, USER bookmarks, day/night, rotate. Jeppesen charts through **Navigraph**, your own PDF charts, and generated 10-9 airport diagram / 10-1P airport information pages for every airport. Documents panel for company docs. |
+| **Enroute** | Moving-map enroute chart on terrain with your live aircraft (follow mode, GS/ALT/TRK/VS strip); zoom in near an airport and the ground map appears automatically. route with airway/FL boxes, FIR boundaries, radar timeline with playback, SIGMETs, live VATSIM ATC frequencies, runway/airport info sheets, measuring, drawing and range rings. Jumps straight into Charts for SID/STAR/APP/TAXI. |
+| **OPT** | Onboard performance tool for the A320, A330-300, A340-600, A350-900, 737-800/-900ER/-9, 747-400, 757-200 and 787-9: TKO Dispatch, TKO All Engine, LDG Dispatch, LDG Enroute. FLEX / assumed temperature, N1, V-speeds, CONF/flaps per type, field/climb limits, landing distances per autobrake. Prefills from the OFP and live METAR, compares with the SimBrief TLR. Simplified model. |
 | **Briefing** | SimBrief: import latest OFP, summary, full OFP, navlog, fuel & weights, weather, ATC flight plan, maps; dispatch new flights on SimBrief, generate in-app through the SimBrief API, or create an offline flight. |
 | **Weather** | Decoded METAR, TAF, runway head/crosswinds and radar for departure, destination, alternates and favourites. |
 | **Checklist**, **ScratchPad**, **Library**, **Clock**, **Converter**, **Logbook** | Electronic normal checklist, handwriting pad with CRAFT/ATIS/TO-data templates, PDF document library, UTC/OOOI block times/timers, unit & fuel uplift converter, flight log with CSV export. |
 | **App Store**, **Settings** | Install and remove apps; iPadOS-style settings for SimBrief, Navigraph, fleet, units, display, wallpaper, Connect iPad. |
 
 iPadOS touches: widgets, dock with recents, Search (Spotlight), Control Center (tap the top-right of the status bar), long-press app menus and jiggle editing, app switcher (swipe up and hold, or double-tap the home bar), brightness and Night Shift.
+
+## Windows app (.exe)
+
+`Rotaidem Flight Bag.exe` is the easiest way to run the EFB on the simulator PC. Double-click it and it:
+
+- starts the EFB and the simulator bridge (MSFS SimConnect is built in, X-Plane 12 needs nothing),
+- opens the EFB in its own app window (Microsoft Edge app mode, no browser bars),
+- lets your iPad connect over Wi-Fi with **Connect iPad**,
+- quits when you close the window. Launching it again while it runs just opens another window.
+
+Allow it through the Windows firewall on **private networks** the first time so the iPad can reach it. Settings, flights and imported documents are kept in `%LOCALAPPDATA%\RotaidemFlightBag`.
+
+**Build it yourself:** double-click `build-exe.bat` (needs Python 3.10+). It creates a build environment, installs PyInstaller, SimConnect and Pillow, and writes `dist\Rotaidem Flight Bag.exe`. The bundled [Python-SimConnect](https://github.com/odwdinc/Python-SimConnect) package is AGPL-3.0 licensed.
 
 ## Put it on your iPad
 
@@ -29,6 +42,18 @@ Like Waymark FlightBag Pro's second-screen pairing, you run the EFB on your PC a
 Allow Python through the Windows firewall for private networks if the iPad can't connect. You can open the sheet again from the **Connect iPad** button next to the iPad frame, from Control Center, or from Settings › Connect iPad.
 
 **Hosted instead of local:** publish the folder with GitHub Pages (Settings › Pages › deploy from branch). The iPad can then open the HTTPS address from anywhere, and the service worker caches the app and airport database for offline use.
+
+## Live aircraft (SimConnect / X-Plane)
+
+The PC server reads your aircraft from the simulator and streams it to the EFB (and to the iPad over Wi-Fi) four times a second.
+
+- **Microsoft Flight Simulator 2020 / 2024** – run `pip install SimConnect` once on the sim PC. Start the EFB with `Start EFB.bat`; it connects when MSFS is running.
+- **X-Plane 12.1+** – nothing to install; the EFB uses X-Plane's built-in web API on port 8086.
+- **No simulator?** Settings › Simulator › Demo flight flies your loaded route so you can try the moving maps.
+
+Live data only works when the EFB is loaded from the PC server (`serve.py`). From GitHub Pages the browser cannot reach your simulator.
+
+Ground maps come from OpenStreetMap through the Overpass API, so detail varies by airport; they are cached after the first load.
 
 ## Setup
 

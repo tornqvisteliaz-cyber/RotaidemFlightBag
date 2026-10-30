@@ -11,9 +11,16 @@ const DEFAULTS = {
   chartTheme: "day",
   autoFetchOfp: true,
   fleet: {
+    "A320": ["RF-320A", "RF-320B", "RF-320C"],
+    "A330-300": ["RF-330A", "RF-330B"],
+    "A340-600": ["RF-346A"],
+    "A350-900": ["RF-359A", "RF-359B"],
     "B737-800": ["RF-801", "RF-802", "RF-803", "RF-804"],
     "B737-900ER": ["RF-901", "RF-902", "RF-903"],
     "B737-9": ["RF-M01", "RF-M02"],
+    "B747-400": ["RF-744A"],
+    "B757-200": ["RF-752A", "RF-752B"],
+    "B787-9": ["RF-789A", "RF-789B"],
     "TRAINING": ["SIM-01"],
   },
 };
@@ -27,6 +34,8 @@ export function settings() {
     let saved = {};
     try { saved = JSON.parse(safeGet(KEY) || "{}"); } catch { /* corrupt */ }
     cache = { ...structuredClone(DEFAULTS), ...saved };
+    // New aircraft types appear even when an older fleet was saved.
+    cache.fleet = { ...structuredClone(DEFAULTS.fleet), ...(saved.fleet || {}) };
   }
   return cache;
 }

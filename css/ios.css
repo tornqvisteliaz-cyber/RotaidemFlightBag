@@ -11,7 +11,11 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0c0f; font-family: var(--font); color: #fff; }
-body { -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; touch-action: none; }
+body { -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; overscroll-behavior: none; }
+/* Scrollable panels pan with one finger; gesture surfaces opt out with touch-action: none. */
+* { -webkit-overflow-scrolling: touch; }
+#home, .app-window.opening, #screen.switcher #windows, .leaflet-container { touch-action: none; }
+img, svg { -webkit-user-drag: none; }
 input, textarea, select { user-select: text; -webkit-user-select: text; font-family: inherit; }
 button { font-family: inherit; color: inherit; }
 
@@ -170,7 +174,7 @@ body.fullscreen #screen { border-radius: 0; width: 100vw; height: 100vh; }
 
 /* home indicator */
 #home-indicator {
-  position: absolute; left: 50%; bottom: 0; width: 260px; height: 22px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 0; width: 300px; height: 30px; transform: translateX(-50%);
   z-index: 60; display: grid; place-items: center; cursor: pointer; touch-action: none;
 }
 #home-indicator span { width: 150px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.85); transition: background .25s; }

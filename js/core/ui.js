@@ -71,7 +71,8 @@ export function popover(anchor, content, { side = "bottom", className = "", widt
   if (typeof content === "string") inner.innerHTML = content; else inner.append(content);
   if (width) pop.style.width = width + "px";
   const shield = html(`<div class="popover-shield"></div>`);
-  shield.addEventListener("pointerdown", e => { e.preventDefault(); closePopovers(); });
+  // Close on click (not pointerdown) so the tap is not re-delivered to whatever lies underneath on iOS.
+  shield.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); closePopovers(); });
   overlayRoot().append(shield, pop);
   const a = {
     l: (ar.left - sr.left) / scale, t: (ar.top - sr.top) / scale,

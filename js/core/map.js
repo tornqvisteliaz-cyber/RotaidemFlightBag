@@ -259,3 +259,32 @@ export async function vatsimAtc(firs) {
   g.count = grouped.size;
   return g;
 }
+
+/** Own-ship symbol with trail. update(state) moves it; follow keeps it centred. */
+export function ownship(map, { color = "#ffffff", outline = "#111", size = 34, trailColor = "#1f7ae0" } = {}) {
+  const icon = () => L.divIcon({
+    className: "ownship",
+    html: `<svg viewBox="0 0 40 40" width="${size}" height="${size}"><path d="M20 2 C21.6 2 22.4 4 22.4 6.5 V15 L37 23.5 V27 L22.4 22.6 V31.5 L27 35 V37.6 L20 35.8 L13 37.6 V35 L17.6 31.5 V22.6 L3 27 V23.5 L17.6 15 V6.5 C17.6 4 18.4 2 20 2Z" fill="${color}" stroke="${outline}" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
+    iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+  });
+  const marker = L.marker([0, 0], { icon: icon(), interactive: false, zIndexOffset: 2000, keyboard: false });
+  const trail = L.polyline([], { color: trailColor, weight: 2.5, opacity: .7, dashArray: "2 5", interactive: false });
+  let shown = false, last = null;
+  const ctl = {
+    follow: false,
+    update(s) {
+      if (!s?.connected || s.lat == null) { if (shown) { marker.remove(); trail.remove(); shown = false; } return; }
+      const p = L.latLng(s.lat, s.lon);
+      marker.setLatLng(p);
+      const rot = (s.onGround ? s.hdg : s.trk ?? s.hdg) ?? 0;
+      const el = marker.getElement()?.querySelector("svg");
+      if (el) el.style.transform = `rotate(${rot}deg)`;
+      if (!last || map.distance(last, p) > (s.onGround ? 8 : 400)) { trail.addLatLng(p); last = p; if (trail.getLatLngs().length > 4000) trail.setLatLngs(trail.getLatLngs().slice(-3000)); }
+      if (!shown) { trail.addTo(map); marker.addTo(map); shown = true; const e2 = marker.getElement()?.querySelector("svg"); if (e2) e2.style.transform = `rotate(${rot}deg)`; }
+      if (ctl.follow) map.panTo(p, { animate: true, duration: 0.25, noMoveStart: true });
+    },
+    get latlng() { return shown ? marker.getLatLng() : null; },
+    clearTrail() { trail.setLatLngs([]); last = null; },
+  };
+  return ctl;
+}

@@ -2,10 +2,11 @@
 import { $, $$, esc, on, listen, toast } from "../core/ui.js";
 import { APPS, byId, isInstalled, install, uninstall } from "../core/registry.js";
 import { APP_ICONS } from "../core/icons.js";
+import { I } from "../core/sf.js";
 
 export default { mount: (root, ctx, args) => new AppStore(root, ctx, args) };
 
-const TABS = [["today", "Today", "▤"], ["apps", "Apps", "◫"], ["categories", "Categories", "▦"], ["updates", "Updates", "⇩"], ["search", "Search", "⌕"]];
+const TABS = [["today", "Today", I.today], ["apps", "Apps", I.apps], ["categories", "Categories", I.stack], ["updates", "Updates", I.download], ["search", "Search", I.search]];
 const store = () => APPS.filter(a => a.id !== "settings" && a.id !== "appstore");
 
 class AppStore {
@@ -78,7 +79,7 @@ class AppStore {
       <h3 class="as-sh">Recently updated</h3>${inst.map(a => `<div class="upd" data-app="${a.id}"><div class="as-row"><span class="ic">${APP_ICONS[a.id]}</span><div class="t"><b>${esc(a.name)}</b><small>Version ${esc(a.version)}</small></div>${this.btn(a)}</div><p>${esc(a.whatsNew || "Bug fixes and performance improvements.")}</p></div>`).join("")}</div>`;
   }
   search() {
-    return `<div class="as-pad"><h2 class="as-h">Search</h2><div class="as-search"><span>⌕</span><input placeholder="Games, Apps, Stories and More"></div><div class="results">${this.results()}</div></div>`;
+    return `<div class="as-pad"><h2 class="as-h">Search</h2><div class="as-search">${I.search}<input placeholder="Games, Apps, Stories and More"></div><div class="results">${this.results()}</div></div>`;
   }
   results() {
     const q = this.q.toLowerCase();

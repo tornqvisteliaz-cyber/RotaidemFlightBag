@@ -2,6 +2,7 @@
 import { $, esc, on, pad, toast } from "../core/ui.js";
 import { kv } from "../core/store.js";
 import { getFlight } from "../core/flight.js";
+import { I } from "../core/sf.js";
 
 export default { mount: (root, ctx, args) => new ClockApp(root, args) };
 
@@ -12,7 +13,7 @@ class ClockApp {
     this.root = root;
     this.tab = args?.tab || "world";
     this.st = kv.get("clock", { chrono: null, chronoAcc: 0, block: {}, timerEnd: null, timerSet: 600 });
-    root.innerHTML = `<div class="clk"><main></main><nav>${[["world", "World Clock"], ["block", "Block Times"], ["chrono", "Stopwatch"], ["timer", "Timer"]].map(([k, l]) => `<button data-t="${k}">${l}</button>`).join("")}</nav></div>`;
+    root.innerHTML = `<div class="clk"><main></main><nav>${[["world", "World Clock", I.globe], ["block", "Block Times", I.plane], ["chrono", "Stopwatch", I.stopwatch], ["timer", "Timers", I.timer]].map(([k, l, ic]) => `<button data-t="${k}">${ic}<span>${l}</span></button>`).join("")}</nav></div>`;
     on(root, "click", "[data-t]", (e, b) => { this.tab = b.dataset.t; this.render(); });
     on(root, "click", "[data-a]", (e, b) => this.act(b.dataset.a, b));
     this.tick = setInterval(() => this.update(), 250);

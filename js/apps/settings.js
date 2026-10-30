@@ -6,32 +6,35 @@ import { APPS, layout, resetLayout } from "../core/registry.js";
 import { APP_ICONS } from "../core/icons.js";
 import { WALLPAPERS } from "../core/wallpapers.js";
 import * as NG from "../core/navigraph.js";
+import { I } from "../core/sf.js";
 import { connectSheet, isStandalone, shareBase } from "../core/pair.js";
+import { simState, onSim, setDemo } from "../core/sim.js";
 
 export default { mount: (root, ctx, args) => new SettingsApp(root, ctx, args) };
 
 const G = (c, glyph) => `<span class="sic" style="background:${c}">${glyph}</span>`;
 const SECTIONS = [
-  { group: 0, id: "connect", label: "Connect iPad", icon: G("#0a84ff", "▯") },
-  { group: 0, id: "general", label: "General", icon: G("#8e8e93", "⚙") },
-  { group: 0, id: "display", label: "Display & Brightness", icon: G("#0a84ff", "☀") },
-  { group: 0, id: "homescreen", label: "Home Screen & Dock", icon: G("#5e5ce6", "▦") },
-  { group: 0, id: "wallpaper", label: "Wallpaper", icon: G("#32ade6", "❋") },
-  { group: 0, id: "battery", label: "Battery", icon: G("#34c759", "▮") },
+  { group: 0, id: "connect", label: "Connect iPad", icon: G("#0a84ff", I.ipad) },
+  { group: 0, id: "sim", label: "Simulator", icon: G("#34c759", I.plane) },
+  { group: 0, id: "general", label: "General", icon: G("#8e8e93", I.gear) },
+  { group: 0, id: "display", label: "Display & Brightness", icon: G("#0a84ff", I.sun) },
+  { group: 0, id: "homescreen", label: "Home Screen & Dock", icon: G("#5e5ce6", I.grid) },
+  { group: 0, id: "wallpaper", label: "Wallpaper", icon: G("#32ade6", I.wallpaper) },
+  { group: 0, id: "battery", label: "Battery", icon: G("#34c759", I.battery) },
   { group: 1, id: "simbrief", label: "SimBrief", icon: G("#e2483d", "SB") },
   { group: 1, id: "navigraph", label: "Navigraph", icon: G("#1f2b4d", "N") },
-  { group: 1, id: "fleet", label: "Aircraft & Fleet", icon: G("#ff9f0a", "✈") },
-  { group: 1, id: "units", label: "Units & Time", icon: G("#30b0c7", "⇄") },
-  { group: 1, id: "data", label: "Data Sources", icon: G("#64d2ff", "☁") },
-  { group: 2, id: "storage", label: "iPad Storage", icon: G("#8e8e93", "◧") },
-  { group: 2, id: "about", label: "About", icon: G("#8e8e93", "i") },
+  { group: 1, id: "fleet", label: "Aircraft & Fleet", icon: G("#ff9f0a", I.plane) },
+  { group: 1, id: "units", label: "Units & Time", icon: G("#30b0c7", I.ruler) },
+  { group: 1, id: "data", label: "Data Sources", icon: G("#64d2ff", I.cloud) },
+  { group: 2, id: "storage", label: "iPad Storage", icon: G("#8e8e93", I.disk) },
+  { group: 2, id: "about", label: "About", icon: G("#8e8e93", I.info) },
 ];
 
 class SettingsApp {
   constructor(root, ctx, args) {
     this.root = root; this.ctx = ctx;
     this.sec = args?.section || "general";
-    root.innerHTML = `<div class="set"><aside><h1>Settings</h1><div class="srch"><span>⌕</span><input placeholder="Search"></div>
+    root.innerHTML = `<div class="set"><aside><h1>Settings</h1><div class="srch">${I.search}<input placeholder="Search"></div>
       <div class="profile"><span class="av">${esc((settings().pilotName || "Pilot").split(" ").map(x => x[0]).join("").slice(0, 2).toUpperCase())}</span><div><b>${esc(settings().pilotName || "Pilot")}</b><small>EFB Account, SimBrief & Navigraph</small></div></div>
       <nav></nav></aside><main><header><h2></h2></header><div class="pane"></div></main></div>`;
     on(root, "click", "[data-sec]", (e, b) => { this.sec = b.dataset.sec; this.render(); });
@@ -40,7 +43,7 @@ class SettingsApp {
       $$("nav [data-sec]", root).forEach(b => { b.style.display = !q || b.textContent.toLowerCase().includes(q) ? "" : "none"; });
     });
     $(".profile", root).addEventListener("click", () => { this.sec = "simbrief"; this.render(); });
-    this.unsub = [listen("navigraph", () => this.sec === "navigraph" && this.render())];
+    this.unsub = [listen("navigraph", () => this.sec === "navigraph" && this.render()), onSim(() => this.sec === "sim" && this.updSim())];
     this.render();
   }
   show(args) { if (args?.section) { this.sec = args.section; this.render(); } }
@@ -105,6 +108,7 @@ class SettingsApp {
       setSetting("fleet", fleet); toast("Fleet saved");
     }
     if (a === "pair") connectSheet();
+    if (a === "demo") { setDemo(!settings().simDemo); this.render(); }
     if (a === "resetlayout") { resetLayout(); toast("Home Screen layout reset"); }
     if (a === "clearflight") { setFlight(null); toast("Flight cleared"); }
     if (a === "reset") {
@@ -115,13 +119,37 @@ class SettingsApp {
   }
 
   // ---- sections ----
+  sim() {
+    setTimeout(() => this.updSim(), 0);
+    return `<div class="card pad simhero"><div class="simstat"><i></i><div><b id="simtitle">—</b><small id="simsub"></small></div></div>
+      <div class="simgrid" id="simgrid"></div></div>` +
+      this.group("Source", [
+        this.row("Demo flight", this.sw("simDemoUi", settings().simDemo).replace('data-sw="simDemoUi"', 'data-do="demo"'), "Flies the loaded route without a simulator, for trying the moving maps"),
+      ]) +
+      this.group("Set up on the simulator PC", [
+        `<div class="steps"><p><b>1.</b> Start the EFB with <code>Start EFB.bat</code> (or <code>python serve.py</code>) on the PC running the simulator.</p>
+        <p><b>2. Microsoft Flight Simulator:</b> install the SimConnect package once with <code>pip install SimConnect</code>. The EFB connects automatically when MSFS is running.</p>
+        <p><b>3. X-Plane 12:</b> nothing to install – the EFB uses X-Plane's built-in web API (port 8086).</p>
+        <p><b>4.</b> Open the EFB on your iPad with Connect iPad. Position updates four times a second over Wi-Fi.</p></div>`,
+      ], "Live data needs the PC server. When the EFB is opened from GitHub Pages it cannot reach the simulator.");
+  }
+  updSim() {
+    const s = simState(), el = id => $("#" + id, this.root);
+    if (!el("simtitle")) return;
+    this.root.querySelector(".simhero")?.classList.toggle("live", !!s.connected);
+    el("simtitle").textContent = s.connected ? `${s.source} connected` : "Not connected";
+    el("simsub").textContent = s.connected ? (s.title || s.callsign || "") : (s.status || "");
+    const r = v => (v == null ? "—" : Math.round(v).toLocaleString());
+    el("simgrid").innerHTML = s.connected ? [["Latitude", s.lat?.toFixed(4)], ["Longitude", s.lon?.toFixed(4)], ["Altitude", r(s.alt) + " ft"], ["Ground speed", r(s.gs) + " kt"], ["Heading", r(s.hdg) + "°"], ["Vertical speed", r(s.vs) + " fpm"], ["On ground", s.onGround ? "Yes" : "No"]]
+      .map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join("") : "";
+  }
   connect() {
     setTimeout(async () => {
       const b = await shareBase();
       const el = $("#pairaddr", this.root);
       if (el) el.textContent = b.url || "Not reachable – start with Start EFB.bat / serve.py";
     }, 0);
-    return `<div class="card pad pairhero"><div class="dev">▯</div><div><b>Use the EFB on your iPad</b><p>Show a QR code, scan it with the iPad camera and add the EFB to the Home Screen. It runs full-screen, keeps your SimBrief username and works offline once loaded over HTTPS.</p><button class="ios-btn" data-do="pair">Show QR Code</button></div></div>` +
+    return `<div class="card pad pairhero"><div class="dev">${I.plane}</div><div><b>Use the EFB on your iPad</b><p>Show a QR code, scan it with the iPad camera and add the EFB to the Home Screen. It runs full-screen, keeps your SimBrief username and works offline once loaded over HTTPS.</p><button class="ios-btn" data-do="pair">Show QR Code</button></div></div>` +
       this.group("Status", [
         this.row("This device", isStandalone() ? "Installed (Home Screen app)" : "Browser"),
         this.row("iPad address", `<span class="dim" id="pairaddr">Checking…</span>`),
@@ -142,7 +170,7 @@ class SettingsApp {
   }
   display() {
     const s = settings();
-    return this.group("Brightness", [`<div class="row slider"><span>☼</span><input type="range" min="0.25" max="1" step="0.01" value="${s.brightness ?? 1}" data-range="brightness"><span style="font-size:22px">☀</span></div>`,
+    return this.group("Brightness", [`<div class="row slider">${I.sunDim}<input type="range" min="0.25" max="1" step="0.01" value="${s.brightness ?? 1}" data-range="brightness">${I.sun}</div>`,
       this.row("Night Shift", this.sw("nightShift", s.nightShift), "Warmer colours for night flights"),
     ]) + this.group("Charts", [
       this.row("Chart theme", this.seg("chartTheme", [["day", "Day"], ["night", "Night"]], s.chartTheme || "day")),

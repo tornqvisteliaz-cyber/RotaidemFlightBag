@@ -9,8 +9,9 @@ the iPad camera (the same way Waymark FlightBag Pro pairs a second screen).
     python serve.py 9000       # custom port
     python serve.py --no-browser
 
-Only static files are served. /lan.json tells the page which local address
-the iPad should use. PHP endpoints (api/*.php) are not available with this
+Serves the EFB files, /lan.json (which local address the iPad should use) and
+live aircraft data from MSFS / X-Plane at /sim/state and /sim/stream (see
+sim_bridge.py). PHP endpoints (api/*.php) are not available with this
 server; host the folder on a PHP server for in-app SimBrief generation.
 """
 import http.server
@@ -19,12 +20,14 @@ import os
 import socket
 import socketserver
 import sys
+import time
 import webbrowser
 
-ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
-PORT = int(ARGS[0]) if ARGS else 8642
-OPEN_BROWSER = "--no-browser" not in sys.argv
-ROOT = os.path.dirname(os.path.abspath(__file__))
+import sim_bridge
+
+DEFAULT_PORT = 8642
+# When packaged as an .exe (PyInstaller) the web files are unpacked to sys._MEIPASS.
+ROOT = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 
 
 def lan_ips():
@@ -55,13 +58,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/lan.json":
-            body = json.dumps({"ips": lan_ips(), "port": PORT}).encode()
+            body = json.dumps({"ips": lan_ips(), "port": self.server.server_port}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
             return
+        path = self.path.split("?")[0]
+        if path == "/sim/state":
+            body = json.dumps(sim_bridge.state()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/sim/stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            try:
+                while True:
+                    self.wfile.write(b"data: " + json.dumps(sim_bridge.state()).encode() + b"\n\n")
+                    self.wfile.flush()
+                    time.sleep(0.25)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                return
         # Never serve server-side secrets.
         if self.path.split("?")[0].startswith("/api/config"):
             self.send_error(404)
@@ -77,17 +101,32 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_address = True
 
 
+def create_server(port=DEFAULT_PORT, tries=10):
+    """Bind on all interfaces (so the iPad can connect), trying the next ports if busy."""
+    last = None
+    for p in range(port, port + tries):
+        try:
+            return Server(("0.0.0.0", p), Handler), p
+        except OSError as e:
+            last = e
+    raise last
+
+
 if __name__ == "__main__":
-    with Server(("0.0.0.0", PORT), Handler) as httpd:
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    sim_bridge.start()
+    httpd, PORT = create_server(int(args[0]) if args else DEFAULT_PORT)
+    with httpd:
         ips = lan_ips()
         print("\n  Rotaidem Flight Bag is running\n")
         print(f"  On this computer:  http://localhost:{PORT}/?connect")
         for ip in ips:
             print(f"  On your iPad:      http://{ip}:{PORT}/")
         print("\n  Open the first link, tap 'Connect iPad' and scan the QR code.")
+        print("  Live aircraft: MSFS via SimConnect (pip install SimConnect) or X-Plane 12 web API.")
         print("  Allow Python through the firewall on private networks if asked.")
         print("  Press Ctrl+C to stop.\n")
-        if OPEN_BROWSER:
+        if "--no-browser" not in sys.argv:
             try:
                 webbrowser.open(f"http://localhost:{PORT}/?connect")
             except Exception:

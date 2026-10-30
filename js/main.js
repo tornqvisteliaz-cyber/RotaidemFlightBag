@@ -8,6 +8,8 @@ import { loadAirports, searchAirports } from "./core/airports.js";
 import { APPS, byId, layout, uninstall, moveApp } from "./core/registry.js";
 import { WALLPAPERS } from "./core/wallpapers.js";
 import { applyPairing, connectSheet, installHint, isStandalone, isIOS } from "./core/pair.js";
+import { startSim, simState, onSim } from "./core/sim.js";
+import { I } from "./core/sf.js";
 
 const screen = $("#screen");
 const windows = $("#windows");
@@ -162,10 +164,15 @@ home.addEventListener("pointerdown", e => {
   longPressed = false;
   clearTimeout(pressTimer);
   if (!icon || editing) return;
-  pressTimer = setTimeout(() => { longPressed = true; iconMenu(icon); }, 520);
+  const x0 = e.clientX, y0 = e.clientY;
+  pressTimer = setTimeout(() => { longPressed = true; navigator.vibrate?.(10); iconMenu(icon); }, 520);
+  const cancelOnMove = ev => { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) clearTimeout(pressTimer); };
+  home.addEventListener("pointermove", cancelOnMove);
+  home.addEventListener("pointerup", () => home.removeEventListener("pointermove", cancelOnMove), { once: true });
 });
 ["pointerup", "pointerleave", "pointercancel"].forEach(t => home.addEventListener(t, () => clearTimeout(pressTimer)));
-home.addEventListener("contextmenu", e => { const icon = e.target.closest(".app-icon"); if (icon) { e.preventDefault(); longPressed = true; iconMenu(icon); } });
+// Touch long-press already opens the menu; only a mouse right-click needs this.
+home.addEventListener("contextmenu", e => { e.preventDefault(); const icon = e.target.closest(".app-icon"); if (icon && !longPressed) { longPressed = true; iconMenu(icon); } });
 // Pull down on empty home screen → Spotlight
 home.addEventListener("pointerdown", e => {
   if (e.target.closest(".app-icon, .widget, .dock, button")) return;
@@ -183,10 +190,10 @@ function iconMenu(icon) {
   const menu = html(`<div class="ctx-wrap"><div class="ctx-blur"></div>
     <div class="ctx-icon" style="left:${x}px;top:${y}px">${icon.querySelector(".ic").outerHTML}</div>
     <div class="ctx-menu" style="left:${Math.min(Math.max(10, x - 10), screen.offsetWidth - 280)}px;top:${below ? y + 92 : y - 16 - (a.core ? 150 : 200)}px">
-      <button data-c="open">Open ${esc(a.name)}<span>↗</span></button>
-      <button data-c="move">${inDock ? "Move to Home Screen" : "Move to Dock"}<span>⇅</span></button>
-      <button data-c="edit">Edit Home Screen<span>✎</span></button>
-      ${a.core ? "" : `<button data-c="rm" class="red">Remove App<span>⊖</span></button>`}
+      <button data-c="open">Open ${esc(a.name)}<span>${I.arrowUpRight}</span></button>
+      <button data-c="move">${inDock ? "Move to Home Screen" : "Move to Dock"}<span>${I.move}</span></button>
+      <button data-c="edit">Edit Home Screen<span>${I.pencil}</span></button>
+      ${a.core ? "" : `<button data-c="rm" class="red">Remove App<span>${I.minusCircle}</span></button>`}
     </div></div>`);
   $("#overlay-root").append(menu);
   menu.addEventListener("click", e => {
@@ -252,16 +259,17 @@ function controlCenter() {
   const s = settings(), f = getFlight();
   const cc = html(`<div class="cc"><div class="cc-grid">
     <div class="cc-tile now"><small>FLIGHT</small><b>${esc(f ? `${f.callsign} ${f.orig.icao}–${f.dest.icao}` : "No flight")}</b><button data-cc="sb">↻ Refresh OFP</button></div>
-    <div class="cc-slider" title="Brightness"><input type="range" min="0.25" max="1" step="0.01" value="${s.brightness ?? 1}" data-cc="bright"><i>☼</i></div>
-    <button class="cc-sq ${s.dnd ? "on" : ""}" data-cc="dnd"><span>☾</span><small>Do Not Disturb</small></button>
-    <button class="cc-sq ${s.nightShift ? "on warm" : ""}" data-cc="night"><span>☀</span><small>Night Shift</small></button>
-    <button class="cc-sq ${s.chartTheme === "night" ? "on" : ""}" data-cc="charts"><span>◐</span><small>Charts Night</small></button>
-    <button class="cc-sq ${isFull() ? "on" : ""}" data-cc="frame"><span>⛶</span><small>Full Screen</small></button>
-    <button class="cc-sq" data-cc="timer"><span>⏱</span><small>Timer</small></button>
-    <button class="cc-sq" data-cc="conv"><span>⇄</span><small>Converter</small></button>
-    <button class="cc-sq" data-cc="settings"><span>⚙</span><small>Settings</small></button>
-    <button class="cc-sq" data-cc="search"><span>⌕</span><small>Search</small></button>
-    <button class="cc-wide" data-cc="pair"><span>▯</span><div><b>Connect iPad</b><small>Scan a QR code to open the EFB on your iPad</small></div></button>
+    <div class="cc-slider" title="Brightness"><input type="range" min="0.25" max="1" step="0.01" value="${s.brightness ?? 1}" data-cc="bright"><i>${I.sunDim}</i></div>
+    <button class="cc-sq ${s.dnd ? "on" : ""}" data-cc="dnd"><span>${I.moon}</span><small>Do Not Disturb</small></button>
+    <button class="cc-sq ${s.nightShift ? "on warm" : ""}" data-cc="night"><span>${I.nightShift}</span><small>Night Shift</small></button>
+    <button class="cc-sq ${s.chartTheme === "night" ? "on" : ""}" data-cc="charts"><span>${I.contrast}</span><small>Charts Night</small></button>
+    <button class="cc-sq ${isFull() ? "on" : ""}" data-cc="frame"><span>${I.expand}</span><small>Full Screen</small></button>
+    <button class="cc-sq" data-cc="timer"><span>${I.timer}</span><small>Timer</small></button>
+    <button class="cc-sq" data-cc="conv"><span>${I.arrows}</span><small>Converter</small></button>
+    <button class="cc-sq" data-cc="settings"><span>${I.gear}</span><small>Settings</small></button>
+    <button class="cc-sq" data-cc="search"><span>${I.search}</span><small>Search</small></button>
+    <button class="cc-wide" data-cc="sim"><span class="${simState().connected ? "live" : ""}">${I.plane}</span><div><b>${simState().connected ? esc(simState().source) + " connected" : "Simulator"}</b><small>${esc(simState().connected ? (simState().callsign || simState().title || "Live aircraft position") : (simState().status || "Not connected"))}</small></div></button>
+    <button class="cc-wide" data-cc="pair"><span>${I.ipad}</span><div><b>Connect iPad</b><small>Scan a QR code to open the EFB on your iPad</small></div></button>
   </div></div>`);
   $("#overlay-root").append(cc);
   requestAnimationFrame(() => cc.classList.add("show"));
@@ -279,6 +287,7 @@ function controlCenter() {
     if (k === "conv") { close(); const l = layout(); l.grid.concat(l.dock).includes("converter") ? openApp("converter") : openApp("appstore", { app: "converter" }); }
     if (k === "settings") { close(); openApp("settings"); }
     if (k === "pair") { close(); connectSheet(); }
+    if (k === "sim") { close(); openApp("settings", { section: "sim" }); }
     if (k === "search") { close(); goHome(); setTimeout(spotlight, 300); }
     if (k === "sb") { close(); fetchSimbrief().then(fl => toast(`Imported ${fl.callsign}`)).catch(err => toast(err.message)); }
   });
@@ -467,9 +476,22 @@ addEventListener("keydown", e => {
   if (e.key === "Escape") $$(".spot, .cc, .ctx-wrap").forEach(n => n.remove());
 });
 
+// ---- touch: enable :active feedback on iOS, stop page pinch-zoom / double-tap zoom ----
+document.addEventListener("touchstart", () => {}, { passive: true });
+for (const t of ["gesturestart", "gesturechange"]) document.addEventListener(t, e => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener("touchend", e => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !e.target.closest("input, textarea, select, .c-viewer, .lib .viewer, .leaflet-container")) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+if (matchMedia("(hover: none)").matches) document.body.classList.add("touch");
+
 // ---- boot ---------------------------------------------------------------------
 renderHome();
 loadAirports();
+startSim();
+onSim(s => statusbar.classList.toggle("sim-live", !!s.connected));
 if (settings().autoFetchOfp && settings().simbriefUser) fetchSimbrief().catch(() => {});
 if (justPaired) toast(settings().simbriefUser ? `Connected – SimBrief ${settings().simbriefUser} imported` : "Connected to your Flight Bag", 3500);
 if (params.has("connect")) connectSheet();

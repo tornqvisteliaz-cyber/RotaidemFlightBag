@@ -6,7 +6,8 @@ import { getFlight } from "../core/flight.js";
 import { getAirport, searchAirports, runwayEnds } from "../core/airports.js";
 import { windComponents } from "../core/geo.js";
 import { metar, decodeMetar } from "../core/wx.js";
-import { AIRCRAFT, CONDITIONS, AUTOBRAKES, takeoff, landing } from "../core/perf.js";
+import { AIRCRAFT, CONDITIONS, autobrakes, flapLabel, takeoff, landing } from "../core/perf.js";
+import { I } from "../core/sf.js";
 
 export default { mount: (root, ctx) => new OptApp(root, ctx) };
 
@@ -44,7 +45,7 @@ class OptApp {
   picker() {
     const fleet = settings().fleet;
     this.root.innerHTML = `<div class="opt">
-      <div class="opt-head"><div class="ttl">ONBOARD PERFORMANCE TOOL<small>Select Registration</small></div><div class="ico"><span class="inbox"><i>${Object.keys(fleet).length + 2}</i></span><span class="cog">⚙</span></div></div>
+      <div class="opt-head"><div class="ttl">ONBOARD PERFORMANCE TOOL<small>Select Registration</small></div><div class="ico"><span class="inbox"><i>${Object.keys(fleet).length + 2}</i></span><span class="cog">${I.gear}</span></div></div>
       <div class="opt-pick">
         <div class="back">‹ Select Aircraft</div>
         ${Object.entries(fleet).map(([t, regs]) => `
@@ -83,12 +84,13 @@ class OptApp {
 
   // ---------------------------------------------------------------- calculator
   async calc() {
-    const t = this.state.type, ac = AIRCRAFT[t];
+    const t = this.state.type, ac = AIRCRAFT[t] || AIRCRAFT["B737-800"];
+    this.ac = ac;
     const ldg = this.state.tab.startsWith("ldg");
     const f = this.f;
-    f.cond ||= "DRY"; f.flap ||= ldg ? 30 : 5; f.rating ||= ac.base; f.rev ||= "BOTH"; f.ac ||= "AUTO"; f.ai ||= "OFF"; f.ic ||= "OFF"; f.intx ||= "FULL"; f.ab ||= "2"; f.atmMode ||= "AUTO";
-    if (ldg && !ac.ldgFlaps.includes(+f.flap)) f.flap = 30;
-    if (!ldg && !ac.toFlaps.includes(+f.flap)) f.flap = 5;
+    f.cond ||= "DRY"; f.flap ||= ldg ? ac.defLdg : ac.defTo; if (!ac.ratings.includes(f.rating)) f.rating = ac.base; f.rev ||= "BOTH"; f.ac ||= "AUTO"; f.ai ||= "OFF"; f.ic ||= "OFF"; f.intx ||= "FULL"; if (!autobrakes(ac).includes(f.ab)) f.ab = ac.maker === "Airbus" ? "LO" : "2"; f.atmMode ||= "AUTO";
+    if (ldg && !(String(f.flap) in ac.ldg)) f.flap = ac.defLdg;
+    if (!ldg && !(String(f.flap) in ac.to)) f.flap = ac.defTo;
     const ap = f.arpt ? await getAirport(f.arpt) : null;
     const ends = ap ? runwayEnds(ap) : [];
     if (ap && !ends.find(e => e.id === f.rwy)) f.rwy = ends[0]?.id;
@@ -100,7 +102,7 @@ class OptApp {
     const inp = (k, ph, unit = "") => `<label class="inp"><input data-k="${k}" value="${esc(f[k] ?? "")}" placeholder="${esc(ph)}" inputmode="decimal">${unit ? `<em>${unit}</em>` : ""}</label>`;
     const row = (lbl, ctl) => `<div class="r"><b>${lbl}</b>${ctl}</div>`;
     this.root.innerHTML = `<div class="opt">
-      <div class="opt-head calc"><button class="back" data-a="aircraft">‹</button><div class="ttl">${esc(t)} <span>${esc(this.state.reg)}</span></div><div class="ico"><span class="inbox"><i>6</i></span><span class="cog" data-a="info">⚙</span></div></div>
+      <div class="opt-head calc"><button class="back" data-a="aircraft">‹</button><div class="ttl">${esc(t)} <span>${esc(this.state.reg)}</span></div><div class="ico"><span class="inbox"><i>6</i></span><span class="cog" data-a="info">${I.gear}</span></div></div>
       <div class="opt-bar">${["Info", "Add Airport", "NOTAM", "MEL", "CDL", "Send Output", "Nav Plates"].map(x => `<button data-bar="${x}">${x}</button>`).join("")}</div>
       <div class="opt-form">
         <div class="c">
@@ -113,10 +115,10 @@ class OptApp {
           ${row("QNH", inp("qnh", "HPA"))}
         </div>
         <div class="c">
-          ${ldg ? row("AB", sel("ab", AUTOBRAKES.map(a => [a, a === "MAX MANUAL" ? "MAX MANUAL" : "AUTOBRAKE " + a]), "")) : row("RTG", sel("rating", ac.ratings.map(r => [r, r + (r === ac.base ? "" : " DERATE")]), ""))}
+          ${ldg ? row("AB", sel("ab", autobrakes(ac).map(a => [a, a === "MAX MANUAL" ? "MAX MANUAL" : "AUTOBRAKE " + a]), "")) : row("RTG", sel("rating", ac.ratings.map(r => [r, ac.maker === "Airbus" ? "TOGA / FLEX" : r + (r === ac.base ? "" : " DERATE")]), ""))}
           ${ldg ? row("VAPP", inp("addSpeed", "+ KT")) : row("ATM", inp("atmFixed", "AUTO", "°C"))}
           ${row("REV", sel("rev", [["BOTH", "BOTH OPERATIVE"], ["INOP", "ONE INOP"]], ""))}
-          ${row("FLAP", sel("flap", (ldg ? ac.ldgFlaps : ac.toFlaps).map(x => [x, "FLAPS " + x]), ""))}
+          ${row("FLAP", sel("flap", Object.keys(ldg ? ac.ldg : ac.to).map(x => [x, flapLabel(ac, x)]), ""))}
           ${row("A/C", sel("ac", [["AUTO", "PACKS AUTO"], ["OFF", "PACKS OFF"]], ""))}
           ${row("A/I", sel("ai", [["OFF", "A/I OFF"], ["ENG", "ENG A/I ON"], ["ALL", "ENG+WING ON"]], ""))}
           ${ldg ? "" : row("IC", sel("ic", [["OFF", "IMPR CLIMB OFF"], ["ON", "IMPR CLIMB ON"]], ""))}
@@ -195,29 +197,30 @@ class OptApp {
     const toraFt = Math.max(0, end.len - offset - (ldg ? end.disp : 0));
     const tora = toraFt * 0.3048;
     const elev = end.elev ?? ap.elev;
-    const base = { type: this.state.type, w, elev, qnh: +f.qnh, oat: +f.oat, head: wc.head, cond: f.cond, flap: +f.flap, ai: f.ai !== "OFF", packs: f.ac !== "OFF", rev: f.rev === "BOTH" };
+    const base = { type: this.state.type, w, elev, qnh: +f.qnh, oat: +f.oat, head: wc.head, cond: f.cond, flap: String(f.flap), ai: f.ai !== "OFF", packs: f.ac !== "OFF", rev: f.rev === "BOTH" };
     const fmtD = m => `${fmtNum(m)} M / ${fmtNum(m / 0.3048)} FT`;
     const hdr = `<div class="opt-hdr"><b>${esc(ap.icao)} ${esc(end.id)}</b><span>${f.intx === "FULL" ? "FULL LENGTH" : "INTX " + f.intx}</span><span>${ldg ? "LDA" : "TORA"} ${fmtNum(toraFt)} FT</span><span>ELEV ${elev} FT</span><span>${wc.head >= 0 ? "HW" : "TW"} ${Math.abs(Math.round(wc.head))} / XW ${Math.abs(Math.round(wc.cross))} KT</span><span>${esc(f.cond)}</span></div>`;
     let body = "", text = "";
     if (!ldg) {
       const r = takeoff({ ...base, tora, rating: f.rating, atmMode: f.atmMode, atmFixed: f.atmFixed ? +f.atmFixed : null, ic: f.ic === "ON", cg: f.cg ? +f.cg : null });
-      const thr = r.atm ? `${f.rating} / ${r.atm}°C` : `${f.rating} TO`;
+      const thr = r.thrustText;
+      const fl = this.ac.maker === "Airbus" ? "CONF" : "FLAPS";
       if (this.state.tab === "tko") {
         body = `<div class="opt-res-grid">
-          <div class="box big ${r.ok ? "" : "bad"}"><span>FLAPS</span><b>${f.flap}</b></div>
+          <div class="box big ${r.ok ? "" : "bad"}"><span>${fl}</span><b>${f.flap}</b></div>
           <div class="box big"><span>THRUST</span><b>${thr}</b></div>
           <div class="box big"><span>N1</span><b>${r.n1}%</b></div>
           <div class="box v"><span>V1</span><b>${r.v1}</b></div><div class="box v"><span>VR</span><b>${r.vr}</b></div><div class="box v"><span>V2</span><b>${r.v2}</b></div>
-          <div class="box"><span>STAB TRIM</span><b>${f.cg ? r.trim : "—"}</b></div>
+          <div class="box"><span>${this.ac.maker === "Airbus" ? "THS" : "STAB TRIM"}</span><b>${f.cg && r.trim != null ? (this.ac.maker === "Airbus" ? `${Math.abs(r.trim)} ${r.trim >= 0 ? "UP" : "DN"}` : r.trim) : "—"}</b></div>
           <div class="box"><span>REQ / AVAIL</span><b>${fmtNum(r.req)} / ${fmtNum(tora)} M</b></div>
           <div class="box"><span>MARGIN</span><b class="${r.margin < 0 ? "red" : ""}">${fmtNum(r.margin)} M</b></div>
           <div class="box"><span>PERF LIMIT WT</span><b>${fmtNum(r.perfLimit)} KG</b></div>
           <div class="box"><span>LIMIT CODE</span><b>${r.limitCode}</b></div>
-          <div class="box"><span>VREF30 (RTN)</span><b>${r.vref30}</b></div>
+          <div class="box"><span>VREF ${esc(this.ac.defLdg)} (RTN)</span><b>${r.vrefRtn}</b></div>
         </div>
         ${r.ok ? "" : `<div class="opt-warn">${w > r.perfLimit ? `TOW ${fmtNum(w)} KG EXCEEDS PERFORMANCE LIMIT ${fmtNum(r.perfLimit)} KG` : "RUNWAY TOO SHORT FOR CONDITIONS"}</div>`}
         ${this.tlrCompare(ap.icao, end.id)}`;
-        text = `OPT ${ap.icao} ${end.id} ${f.intx} ${f.cond}\nTOW ${w} FLAPS ${f.flap} ${thr} N1 ${r.n1}\nV1 ${r.v1} VR ${r.vr} V2 ${r.v2}${f.cg ? ` TRIM ${r.trim}` : ""}`;
+        text = `OPT ${ap.icao} ${end.id} ${f.intx} ${f.cond}\nTOW ${w} ${fl} ${f.flap} ${thr} N1 ${r.n1}\nV1 ${r.v1} VR ${r.vr} V2 ${r.v2}${f.cg ? ` TRIM ${r.trim}` : ""}`;
       } else {
         body = `<div class="opt-res-grid">
           <div class="box big"><span>FULL RATED N1</span><b>${r.n1Full}%</b></div>
@@ -233,7 +236,7 @@ class OptApp {
       const r = landing({ ...base, lda: tora, autobrake: f.ab, addSpeed: +f.addSpeed || 0, headGust: Math.max(0, wc.head / 2) });
       if (this.state.tab === "ldg") {
         body = `<div class="opt-res-grid">
-          <div class="box big ${r.ok ? "" : "bad"}"><span>FLAPS</span><b>${f.flap}</b></div>
+          <div class="box big ${r.ok ? "" : "bad"}"><span>${this.ac.maker === "Airbus" ? "CONF" : "FLAPS"}</span><b>${f.flap}</b></div>
           <div class="box big"><span>VREF${f.flap}</span><b>${r.vref}</b></div>
           <div class="box big"><span>VAPP</span><b>${r.vapp}</b></div>
           <div class="box"><span>DISPATCH REQ</span><b>${fmtD(r.dispatchReq)}</b></div>
@@ -245,7 +248,7 @@ class OptApp {
           ${r.table.map(x => `<div class="${x.ab === f.ab ? "on" : ""} ${x.ok ? "" : "bad"}"><span>${x.ab === "MAX MANUAL" ? x.ab : "AUTOBRAKE " + x.ab}</span><span>${fmtD(x.d)}</span><span>${fmtNum(tora - x.d)} M</span></div>`).join("")}
           </div><div class="opt-res-grid"><div class="box big"><span>VREF${f.flap}</span><b>${r.vref}</b></div><div class="box big"><span>VAPP</span><b>${r.vapp}</b></div></div>`;
       }
-      text = `OPT LDG ${ap.icao} ${end.id} ${f.cond} LW ${w} FLAPS ${f.flap} VREF ${r.vref} VAPP ${r.vapp} AB ${f.ab} ${r.selected}M`;
+      text = `OPT LDG ${ap.icao} ${end.id} ${f.cond} LW ${w} ${flapLabel(this.ac, f.flap)} VREF ${r.vref} VAPP ${r.vapp} AB ${f.ab} ${r.selected}M`;
     }
     this.lastText = text;
     out.innerHTML = hdr + body;
