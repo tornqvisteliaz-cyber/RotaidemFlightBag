@@ -113,3 +113,6 @@
 .at-panel button:active { background: rgba(255,255,255,.12); }
 .at-panel .sf { width: 34px; height: 34px; }
 .at-panel .home i { width: 34px; height: 34px; border-radius: 10px; border: 3px solid #fff; display: block; }
+/* Map symbols hide for the length of a zoom/pinch and fade back in at their new spot (see calmMarkers in map.js) */
+.leaflet-marker-pane { transition: opacity .16s ease-out; }
+.leaflet-marker-pane.zooming { opacity: 0; transition: none; }

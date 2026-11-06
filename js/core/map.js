@@ -29,17 +29,43 @@ export const fetchFIRNames = () => cached("firnames", async () => {
   return m;
 });
 
+// Pre-drawn canvas margin per side: big on desktop (fewer redraws), small on iPad, where a
+// retina canvas twice the screen size is slow to fill and near Safari's canvas size limit.
+const PAD = L.Browser.mobile ? 0.2 : 0.5;
+
 export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZoom = 12 } = {}) {
   // Canvas instead of SVG: thousands of FIR/coastline vertices redraw far faster while panning.
   const map = L.map(el, {
     center, zoom, minZoom, maxZoom, zoomControl: false, attributionControl: true,
     worldCopyJump: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110, wheelDebounceTime: 30,
-    preferCanvas: true, renderer: L.canvas({ padding: 0.5, tolerance: 3 }), fadeAnimation: true, markerZoomAnimation: true,
+    preferCanvas: true, renderer: L.canvas({ padding: PAD, tolerance: 3 }), fadeAnimation: true, markerZoomAnimation: true,
   });
   map.attributionControl.setPrefix("");
   liveRedraw(map);
+  calmMarkers(map);
   return map;
 }
+
+/**
+ * Map symbols are DOM markers. During a zoom or pinch Leaflet moves every one of them on
+ * every frame, which is slow on iPad and makes them trail and jump. Instead hide the marker
+ * pane for the zoom, skip their updates, and fade them back in at the right place at the end.
+ * (Own-ship lives in its own pane and stays visible.)
+ */
+function calmMarkers(map) {
+  const pane = map.getPane("markerPane");
+  map.on("zoomstart", () => { map._calm = true; pane.classList.add("zooming"); });
+  map.on("zoomend", () => {
+    if (!map._calm) return;
+    map._calm = false;
+    map.eachLayer(l => { if (l instanceof L.Marker && l._icon && l.options.pane === "markerPane") l.update(); });
+    pane.classList.remove("zooming");
+  });
+}
+const calm = m => m._map?._calm && m.options.pane === "markerPane";
+const mUpdate = L.Marker.prototype.update, mAnim = L.Marker.prototype._animateZoom;
+L.Marker.prototype.update = function () { return calm(this) ? this : mUpdate.call(this); };
+L.Marker.prototype._animateZoom = function (o) { if (!calm(this)) mAnim.call(this, o); };
 
 /**
  * Leaflet only redraws canvas vectors (FIRs, route, SIGMETs) and our viewport markers at
@@ -47,7 +73,6 @@ export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZo
  * map follows the aircraft it only needs redrawing when the view nears that edge: that keeps
  * every other frame free. Markers get a cheaper "livemove" after smaller moves.
  */
-const PAD = 0.5;
 function liveRedraw(map) {
   let drawnAt = null, markAt = null;
   const reset = () => { const p = map._getMapPanePos?.(); drawnAt = p; markAt = p; };
@@ -78,11 +103,10 @@ export function viewportMarkers(map, items, { pos, want, make, key = (it, z, i) 
   const cache = new Map();
   let shown = new Map();
   let raf = 0;
-  const update = anim => {
+  const update = () => {
     raf = 0;
     if (!map.hasLayer(group)) return;
-    const z = anim ? anim.zoom : map.getZoom();
-    const b = (anim ? boundsAt(map, anim.center, anim.zoom) : map.getBounds()).pad(pad);
+    const z = map.getZoom(), b = map.getBounds().pad(pad);
     const next = new Map();
     for (let i = 0; i < items.length && next.size < max; i++) {
       const it = items[i];
@@ -94,31 +118,15 @@ export function viewportMarkers(map, items, { pos, want, make, key = (it, z, i) 
       if (!m) { m = make(it, z); cache.set(k, m); }
       next.set(k, m);
     }
-    if (anim) {
-      // Zoom animation starting: add what the new view needs now and fly it in with the map
-      // (old markers stay until the zoom ends), so nothing pops in afterwards.
-      const added = [];
-      for (const [k, m] of next) if (!shown.has(k)) { group.addLayer(m); added.push(m); shown.set(k, m); }
-      if (added.length && added.length <= 120) { void map.getPane("markerPane").offsetWidth; added.forEach(m => m._animateZoom?.(anim)); }
-      else added.forEach(m => m._animateZoom?.(anim));
-      return;
-    }
     for (const [k, m] of shown) if (!next.has(k)) group.removeLayer(m);
     for (const [k, m] of next) if (!shown.has(k)) group.addLayer(m);
     shown = next;
   };
-  const schedule = () => { if (!raf) raf = requestAnimationFrame(() => update()); };
-  const onAnim = e => { if (!e.noUpdate) update(e); };
-  group.on("add", () => { map.on("moveend livemove", schedule); map.on("zoomanim", onAnim); schedule(); });
-  group.on("remove", () => { map.off("moveend livemove", schedule); map.off("zoomanim", onAnim); group.clearLayers(); shown = new Map(); });
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+  group.on("add", () => { map.on("moveend livemove", schedule); schedule(); });
+  group.on("remove", () => { map.off("moveend livemove", schedule); group.clearLayers(); shown = new Map(); });
   group.refresh = () => { for (const m of shown.values()) group.removeLayer(m); shown = new Map(); cache.clear(); schedule(); };
   return group;
-}
-
-/** Lat/lon bounds of the view the map will have at center/zoom. */
-function boundsAt(map, center, zoom) {
-  const pb = map.getPixelBounds(center, zoom);
-  return L.latLngBounds(map.unproject(pb.getBottomLeft(), zoom), map.unproject(pb.getTopRight(), zoom));
 }
 
 /** Vector land / border layer (Natural Earth via world-atlas). */
@@ -354,7 +362,8 @@ export function ownship(map, { color = "#ffffff", outline = "#111", size = 34, t
     html: `<svg viewBox="0 0 40 40" width="${size}" height="${size}"><path d="M20 2 C21.6 2 22.4 4 22.4 6.5 V15 L37 23.5 V27 L22.4 22.6 V31.5 L27 35 V37.6 L20 35.8 L13 37.6 V35 L17.6 31.5 V22.6 L3 27 V23.5 L17.6 15 V6.5 C17.6 4 18.4 2 20 2Z" fill="${color}" stroke="${outline}" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
     iconSize: [size, size], iconAnchor: [size / 2, size / 2],
   });
-  const marker = L.marker([0, 0], { icon: icon(), interactive: false, zIndexOffset: 2000, keyboard: false });
+  if (!map.getPane("own")) map.createPane("own").style.zIndex = 640;
+  const marker = L.marker([0, 0], { icon: icon(), interactive: false, keyboard: false, pane: "own" });
   const trail = L.polyline([], { color: trailColor, weight: 2.5, opacity: .7, dashArray: "2 5", interactive: false });
   let shown = false, last = null;
   // The sim sends a few positions a second; glide between them every frame instead of jumping.
@@ -424,10 +433,10 @@ export function basemap(map, style = "charts") {
   const layers = [];
   let land = null;
   if (style === "fd") {
-    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, updateWhenZooming: false, updateWhenIdle: false, keepBuffer: 3, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
-    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, updateWhenZooming: false, updateWhenIdle: false, keepBuffer: 3, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
+    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, updateWhenZooming: false, keepBuffer: 3, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
+    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, updateWhenZooming: false, keepBuffer: 3, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
   } else {
-    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, updateWhenZooming: false, updateWhenIdle: false, keepBuffer: 3, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
+    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, updateWhenZooming: false, keepBuffer: 3, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
     // Charts+ look when zoomed out: flat cream land on grey-blue sea.
     addLand(map, { land: "#f3eed9", borders: "#9a9a9a" }).then(l => {
       land = l;
@@ -436,7 +445,7 @@ export function basemap(map, style = "charts") {
       map.on("zoomend", vis); vis();
     }).catch(() => {});
   }
-  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, updateWhenZooming: false, updateWhenIdle: false, className: "bm-labels" });
+  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, updateWhenZooming: false, className: "bm-labels" });
   const group = L.layerGroup(layers).addTo(map);
   let night = false;
   const paint = () => land?.eachLayer(l => l.setStyle(l.options.style?.fill === false
