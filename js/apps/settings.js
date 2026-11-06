@@ -250,7 +250,7 @@ class SettingsApp {
   }
   about() {
     return this.group("", [
-      this.row("Name", "Rotaidem Flight Bag"), this.row("Software Version", "1.3.0 (26.11)"), this.row("Model", "iPad Air (web)"),
+      this.row("Name", "Rotaidem Flight Bag"), this.row("Software Version", "1.3.1 (26.11)"), this.row("Model", "iPad Air (web)"),
       this.row("Apps", String(layout().grid.length + layout().dock.length)),
     ], "An electronic flight bag for flight simulation, modelled on airline EFB workflows. Not for real-world navigation or performance calculations.");
   }

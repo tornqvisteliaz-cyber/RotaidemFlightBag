@@ -34,7 +34,7 @@ export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZo
   const map = L.map(el, {
     center, zoom, minZoom, maxZoom, zoomControl: false, attributionControl: true,
     worldCopyJump: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 110, wheelDebounceTime: 30,
-    preferCanvas: true, renderer: L.canvas({ padding: 0.35, tolerance: 3 }), fadeAnimation: true, markerZoomAnimation: true,
+    preferCanvas: true, renderer: L.canvas({ padding: 0.5, tolerance: 3 }), fadeAnimation: true, markerZoomAnimation: true,
   });
   map.attributionControl.setPrefix("");
   liveRedraw(map);
@@ -43,25 +43,28 @@ export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZo
 
 /**
  * Leaflet only redraws canvas vectors (FIRs, route, SIGMETs) and our viewport markers at
- * "moveend", so while you drag or the map follows the aircraft they lag and then snap.
- * Redraw them during the move too, a few times a second, and fire "livemove" for markers.
+ * "moveend". The canvas is drawn PAD of a screen beyond each edge, so while you drag or the
+ * map follows the aircraft it only needs redrawing when the view nears that edge: that keeps
+ * every other frame free. Markers get a cheaper "livemove" after smaller moves.
  */
+const PAD = 0.5;
 function liveRedraw(map) {
-  let last = 0, timer = 0;
-  const run = () => {
-    clearTimeout(timer); timer = 0;
-    // During a pinch Leaflet scales the canvas cheaply; a full redraw per step would make it stutter.
-    if (map._animatingZoom || map.touchZoom?._zooming || !map._loaded) return;
-    last = performance.now();
-    const seen = new Set();
-    map.eachLayer(l => { const r = l._renderer; if (r && !seen.has(r) && r._map) { seen.add(r); r._update(); } });
-    map.fire("livemove");
-  };
+  let drawnAt = null, markAt = null;
+  const reset = () => { const p = map._getMapPanePos?.(); drawnAt = p; markAt = p; };
   map.on("move", () => {
-    const wait = 110 - (performance.now() - last);
-    if (wait <= 0) run(); else if (!timer) timer = setTimeout(run, wait);
+    // During a pinch or zoom animation Leaflet scales the canvas cheaply; leave it alone.
+    if (map._animatingZoom || map.touchZoom?._zooming || !map._loaded) return;
+    const pos = map._getMapPanePos(), size = map.getSize();
+    drawnAt ||= pos; markAt ||= pos;
+    const far = (from, k) => Math.abs(pos.x - from.x) > size.x * k || Math.abs(pos.y - from.y) > size.y * k;
+    if (far(drawnAt, PAD * 0.6)) {
+      drawnAt = pos;
+      const seen = new Set();
+      map.eachLayer(l => { const r = l._renderer; if (r && !seen.has(r) && r._map) { seen.add(r); r._update(); } });
+    }
+    if (far(markAt, 0.12)) { markAt = pos; map.fire("livemove"); }
   });
-  map.on("moveend zoomstart", () => { clearTimeout(timer); timer = 0; });
+  map.on("moveend zoomend viewreset", reset);
 }
 
 /**
@@ -96,7 +99,8 @@ export function viewportMarkers(map, items, { pos, want, make, key = (it, z, i) 
       // (old markers stay until the zoom ends), so nothing pops in afterwards.
       const added = [];
       for (const [k, m] of next) if (!shown.has(k)) { group.addLayer(m); added.push(m); shown.set(k, m); }
-      if (added.length) { void map.getPane("markerPane").offsetWidth; added.forEach(m => m._animateZoom?.(anim)); }
+      if (added.length && added.length <= 120) { void map.getPane("markerPane").offsetWidth; added.forEach(m => m._animateZoom?.(anim)); }
+      else added.forEach(m => m._animateZoom?.(anim));
       return;
     }
     for (const [k, m] of shown) if (!next.has(k)) group.removeLayer(m);
@@ -137,7 +141,14 @@ export async function firLayer(map, style = "charts") {
   const lineStyle = style === "fd"
     ? [{ color: "#2b2b2b", weight: 1.3, fill: false, interactive: false }, { color: "#2b2b2b", weight: 5, dashArray: "1.2 11", fill: false, opacity: .75, interactive: false }]
     : [{ color: "#6f9a52", weight: 1.6, dashArray: "7 5", fill: false, interactive: false }];
-  for (const s of lineStyle) g.addLayer(L.geoJSON(geo, { style: { ...s, smoothFactor: 1.6 }, interactive: false }));
+  // One combined polyline per style: a single canvas path is ~5x cheaper to redraw than one per FIR.
+  const rings = [];
+  for (const f of geo.features) {
+    const gm = f.geometry; if (!gm) continue;
+    const polys = gm.type === "Polygon" ? [gm.coordinates] : gm.type === "MultiPolygon" ? gm.coordinates : [];
+    for (const poly of polys) for (const ring of poly) rings.push(ring.map(([lo, la]) => [la, lo]));
+  }
+  for (const s of lineStyle) g.addLayer(L.polyline(rings, { ...s, smoothFactor: 1.6 }));
   const feats = geo.features.filter(f => f.properties.label_lat);
   const labels = viewportMarkers(map, feats, {
     pos: f => [+f.properties.label_lat, +f.properties.label_lon],
