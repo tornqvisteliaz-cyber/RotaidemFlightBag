@@ -1,14 +1,14 @@
 // Settings – iPadOS-style split view with device and EFB settings.
-import { $, $$, html, esc, on, listen, toast, modal, loadScript } from "../core/ui.js";
+import { $, $$, html, esc, on, toast } from "../core/ui.js";
 import { settings, setSetting, kv } from "../core/store.js";
 import { fetchSimbrief, getFlight, setFlight } from "../core/flight.js";
 import { APPS, layout, resetLayout } from "../core/registry.js";
 import { APP_ICONS } from "../core/icons.js";
 import { WALLPAPERS } from "../core/wallpapers.js";
-import * as NG from "../core/navigraph.js";
 import { I } from "../core/sf.js";
 import { connectSheet, isStandalone, shareBase } from "../core/pair.js";
 import { simState, onSim, setDemo } from "../core/sim.js";
+import { detectAircraft } from "../core/aircraft.js";
 
 export default { mount: (root, ctx, args) => new SettingsApp(root, ctx, args) };
 
@@ -23,7 +23,6 @@ const SECTIONS = [
   { group: 0, id: "wallpaper", label: "Wallpaper", icon: G("#32ade6", I.wallpaper) },
   { group: 0, id: "battery", label: "Battery", icon: G("#34c759", I.battery) },
   { group: 1, id: "simbrief", label: "SimBrief", icon: G("#e2483d", "SB") },
-  { group: 1, id: "navigraph", label: "Navigraph", icon: G("#1f2b4d", "N") },
   { group: 1, id: "fleet", label: "Aircraft & Fleet", icon: G("#ff9f0a", I.plane) },
   { group: 1, id: "units", label: "Units & Time", icon: G("#30b0c7", I.ruler) },
   { group: 1, id: "data", label: "Data Sources", icon: G("#64d2ff", I.cloud) },
@@ -36,7 +35,7 @@ class SettingsApp {
     this.root = root; this.ctx = ctx;
     this.sec = args?.section || "general";
     root.innerHTML = `<div class="set"><aside><h1>Settings</h1><div class="srch">${I.search}<input placeholder="Search"></div>
-      <div class="profile"><span class="av">${esc((settings().pilotName || "Pilot").split(" ").map(x => x[0]).join("").slice(0, 2).toUpperCase())}</span><div><b>${esc(settings().pilotName || "Pilot")}</b><small>EFB Account, SimBrief & Navigraph</small></div></div>
+      <div class="profile"><span class="av">${esc((settings().pilotName || "Pilot").split(" ").map(x => x[0]).join("").slice(0, 2).toUpperCase())}</span><div><b>${esc(settings().pilotName || "Pilot")}</b><small>EFB Account &amp; SimBrief</small></div></div>
       <nav></nav></aside><main><header><h2></h2></header><div class="pane"></div></main></div>`;
     on(root, "click", "[data-sec]", (e, b) => { this.sec = b.dataset.sec; this.render(); });
     $(".srch input", root).addEventListener("input", e => {
@@ -44,7 +43,7 @@ class SettingsApp {
       $$("nav [data-sec]", root).forEach(b => { b.style.display = !q || b.textContent.toLowerCase().includes(q) ? "" : "none"; });
     });
     $(".profile", root).addEventListener("click", () => { this.sec = "simbrief"; this.render(); });
-    this.unsub = [listen("navigraph", () => this.sec === "navigraph" && this.render()), onSim(() => this.sec === "sim" && this.updSim())];
+    this.unsub = [onSim(() => this.sec === "sim" && this.updSim())];
     this.render();
   }
   show(args) { if (args?.section) { this.sec = args.section; this.render(); } }
@@ -89,27 +88,12 @@ class SettingsApp {
         toast(j.api_code ? "SimBrief API endpoint is configured ✓" : j.error || "Endpoint error");
       } catch { toast("No PHP endpoint – in-app generation unavailable on this host"); }
     }
-    if (a === "ngsignin") {
-      const m = modal({ title: "Sign in to Navigraph", done: "Cancel", body: `<div class="ng-flow"><div class="spinner dark"></div><p>Requesting a sign-in code…</p></div>` });
-      try {
-        const s = await NG.signIn(async p => {
-          let qr = "";
-          try { await loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"); const q = window.qrcode(0, "M"); q.addData(p.verification_uri_complete); q.make(); qr = q.createSvgTag({ cellSize: 4, margin: 2 }); } catch { /* optional */ }
-          $(".ng-flow", m.el).innerHTML = `${qr}<p>Scan the code or open<br><a href="${esc(p.verification_uri_complete)}" target="_blank" rel="noopener">${esc(p.verification_uri)}</a></p><div class="ng-code">${esc(p.user_code)}</div><p class="dim">Waiting for confirmation…</p>`;
-        });
-        m.el.addEventListener("click", e => { if (e.target.closest("[data-x]")) s.cancel(); });
-        const u = await s.promise;
-        m.close(); toast(`Signed in as ${u.preferred_username}`); this.render();
-      } catch (e) { $(".ng-flow", m.el).innerHTML = `<p style="color:#c00">${esc(e.message || "Sign-in failed")}</p>`; }
-    }
-    if (a === "ngsignout") { await NG.signOut(); toast("Signed out"); this.render(); }
     if (a === "fleetsave") {
       const fleet = {};
       $$("[data-fleet]", this.root).forEach(t => { fleet[t.dataset.fleet] = t.value.split(/[\s,]+/).map(x => x.trim().toUpperCase()).filter(Boolean); });
       setSetting("fleet", fleet); toast("Fleet saved");
     }
     if (a === "pair") connectSheet();
-    if (a === "ngweb") this.ctx.open("navcharts");
     if (a === "at") { setSetting("assistiveTouch", !this.atOn()); this.render(); }
     if (a === "demo") { setDemo(!settings().simDemo); this.render(); }
     if (a === "resetlayout") { resetLayout(); toast("Home Screen layout reset"); }
@@ -141,6 +125,10 @@ class SettingsApp {
       this.group("Source", [
         this.row("Demo flight", this.sw("simDemoUi", settings().simDemo).replace('data-sw="simDemoUi"', 'data-do="demo"'), "Flies the loaded route without a simulator, for trying the moving maps"),
       ]) +
+      this.group("Aircraft", [
+        this.row("Detected aircraft", `<span class="dim" id="simac">—</span>`),
+        this.row("Detect aircraft automatically", this.sw("autoAircraft", settings().autoAircraft !== false), "OPT switches to the aircraft loaded in the sim; GA aircraft open the GA apps' profile"),
+      ]) +
       this.group("Set up on the simulator PC", [
         `<div class="steps"><p><b>1.</b> Start the EFB with <code>Start EFB.bat</code> (or <code>python serve.py</code>) on the PC running the simulator.</p>
         <p><b>2. Microsoft Flight Simulator:</b> install the SimConnect package once with <code>pip install SimConnect</code>. The EFB connects automatically when MSFS is running.</p>
@@ -154,6 +142,8 @@ class SettingsApp {
     this.root.querySelector(".simhero")?.classList.toggle("live", !!s.connected);
     el("simtitle").textContent = s.connected ? `${s.source} connected` : "Not connected";
     el("simsub").textContent = s.connected ? (s.title || s.callsign || "") : (s.status || "");
+    const ac = detectAircraft(s);
+    if (el("simac")) el("simac").textContent = ac ? `${ac.name}${ac.ga ? " (GA)" : ""}${ac.tail ? " · " + ac.tail : ""}` : s.connected ? "Not recognised" : "—";
     const r = v => (v == null ? "—" : Math.round(v).toLocaleString());
     el("simgrid").innerHTML = s.connected ? [["Latitude", s.lat?.toFixed(4)], ["Longitude", s.lon?.toFixed(4)], ["Altitude", r(s.alt) + " ft"], ["Ground speed", r(s.gs) + " kt"], ["Heading", r(s.hdg) + "°"], ["Vertical speed", r(s.vs) + " fpm"], ["On ground", s.onGround ? "Yes" : "No"]]
       .map(([k, v]) => `<div><small>${k}</small><b>${v}</b></div>`).join("") : "";
@@ -213,7 +203,7 @@ class SettingsApp {
     return this.group("Account", [
       this.row("Username or Pilot ID", this.input("simbriefUser", s.simbriefUser, "e.g. jdoe or 123456")),
       this.row("Import latest OFP", `<button class="lnk" data-do="sbtest">Import now</button>`),
-    ], "Your Navigraph/SimBrief username, or the numeric Pilot ID from SimBrief › Account Settings.") +
+    ], "Your SimBrief username, or the numeric Pilot ID from SimBrief › Account Settings.") +
     this.group("Current flight", [
       this.row("Loaded", f ? `${esc(f.callsign)} ${esc(f.orig.icao)}–${esc(f.dest.icao)}` : `<span class="dim">None</span>`),
       this.row("Clear current flight", `<button class="lnk red" data-do="clearflight">Clear</button>`),
@@ -221,29 +211,6 @@ class SettingsApp {
     this.group("In-app OFP generation (API)", [
       this.row("API endpoint", `<button class="lnk" data-do="sbapi">Test</button>`, "api/simbrief.php signs requests with your API key on the server"),
     ], "Your SimBrief API key lives only in api/config.php on the server and is never sent to the browser. On static hosting (e.g. GitHub Pages) use “Plan on SimBrief.com” instead.");
-  }
-  navigraph() {
-    const s = settings();
-    const configured = NG.isConfigured();
-    const intro = `<div class="card pad nghero"><span class="nglogo">N</span><div><b>Navigraph Charts</b>
-      <p>Use your Navigraph subscription in the Flight Bag: open the Navigraph app and sign in with your normal Navigraph account. Charts and the Navigraph map then work on this PC and on your iPad.</p>
-      <button class="ios-btn" data-do="ngweb">Open Navigraph</button></div></div>
-      <p class="foot">The deeper integration below (Jeppesen charts inside Charts, Navigraph maps in Enroute) needs a developer client from the Navigraph partner programme. Regular subscribers don't have one – that is why “Connect Navigraph” fails without it.</p>`;
-    const out = intro + this.group("Advanced: developer client", [
-      this.row("Client ID", this.input("navigraphClientId", s.navigraphClientId, "from Navigraph")),
-      this.row("Client secret", this.input("navigraphClientSecret", s.navigraphClientSecret, "from Navigraph", "password")),
-      this.row("Enroute chart tiles", this.sw("navigraphTiles", s.navigraphTiles), "Jeppesen-style IFR High/Low, VFR and World maps in Enroute and Charts. Your client must allow the “tiles” scope; sign in again after changing."),
-    ], "Navigraph's Charts API needs a client from the Navigraph developer programme (navigraph.com/partners). Changing the client requires reopening the app.");
-    const acct = `<div class="card" id="ngacct">${this.row("Account", configured ? `<span class="dim">Checking…</span>` : `<span class="dim">Add a client first</span>`)}</div>`;
-    setTimeout(async () => {
-      if (!configured) return;
-      const u = await NG.currentUser().catch(() => null);
-      const box = $("#ngacct", this.root);
-      if (box) box.innerHTML = u
-        ? this.row(`Signed in as <b>${esc(u.preferred_username)}</b>`, `<button class="lnk red" data-do="ngsignout">Sign Out</button>`, esc((u.subscriptions || []).join(", ")))
-        : this.row("Not signed in", `<button class="lnk" data-do="ngsignin">Sign In</button>`, "Sign in with your Navigraph account (Charts subscription) to load Jeppesen charts");
-    }, 0);
-    return out + `<h4>Navigraph account</h4>` + acct;
   }
   fleet() {
     const f = settings().fleet;
@@ -264,11 +231,12 @@ class SettingsApp {
       ["FIR boundaries & names", "VATSpy data project"],
       ["Live ATC frequencies", "VATSIM data feed"],
       ["METAR", "VATSIM METAR service"],
-      ["TAF & SIGMET", "aviationweather.gov via api/wx.php (needs PHP hosting)"],
+      ["TAF, SIGMET & METAR area data", "aviationweather.gov via the Flight Bag server (or api/wx.php)"],
+      ["Winds & temps aloft", "Open-Meteo (GFS)"],
       ["Weather radar", "RainViewer"],
       ["Terrain map", "Esri World Physical"],
       ["Flight plans", "SimBrief"],
-      ["Jeppesen charts", "Navigraph Charts API"],
+      ["Charts", "Lido (MSFS 2024), generated airport pages, your own PDFs"],
     ];
     return this.group("", rows.map(([a, b]) => this.row(a, `<span class="dim">${b}</span>`)), "All data is for flight simulation use only.");
   }
@@ -282,9 +250,8 @@ class SettingsApp {
   }
   about() {
     return this.group("", [
-      this.row("Name", "Rotaidem Flight Bag"), this.row("Software Version", "1.0 (26.10)"), this.row("Model", "iPad Air (web)"),
+      this.row("Name", "Rotaidem Flight Bag"), this.row("Software Version", "1.3.0 (26.11)"), this.row("Model", "iPad Air (web)"),
       this.row("Apps", String(layout().grid.length + layout().dock.length)),
-      this.row("Navigraph", NG.isConfigured() ? "Configured" : "Not configured"),
     ], "An electronic flight bag for flight simulation, modelled on airline EFB workflows. Not for real-world navigation or performance calculations.");
   }
 }

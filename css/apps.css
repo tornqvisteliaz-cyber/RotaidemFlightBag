@@ -199,6 +199,59 @@
 .d-sub.hidden, .d-tab.hidden { display: none; }
 .d-empty { padding: 14px 26px; font-size: 13px; color: #c9ccd6; background: #3a3c44; }
 
-.ng-flow { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
-.ng-flow svg { width: 180px; height: 180px; }
-.ng-code { font: 700 30px var(--mono); letter-spacing: 6px; padding: 10px 18px; background: #fff; border-radius: 10px; border: 1px solid #ddd; }
+/* FliteDeck-style frequency callout with leader line */
+.atc-co { position: relative; }
+.atc-co i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: #1b2a5c; }
+.atc-co::before { content: ""; position: absolute; left: 0; top: 0; width: 36px; height: 1.5px; background: #1b2a5c; transform-origin: 0 50%; transform: rotate(-40deg); }
+.atc-co div { position: absolute; left: 26px; bottom: 20px; display: flex; flex-direction: column; background: #16234f; color: #fff; padding: 4px 8px; border-radius: 2px; white-space: nowrap; font: 600 11px Arial; line-height: 1.3; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.atc-co b { font-size: 11.5px; }
+.atc-co span { opacity: .8; font-weight: 500; }
+.atc-co em { font-style: normal; color: #9fd0ff; }
+/* Charts+ night ENR map and COM AREAS panel */
+.charts.night .c-map { background: #1b3a60; }
+.c-com { position: absolute; right: 10px; top: 10px; z-index: 500; width: 250px; max-height: 45%; overflow: auto; background: rgba(28,30,38,.94); color: #fff; border-radius: 4px; font: 12px Arial, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.c-com.hidden { display: none; }
+.c-com header { padding: 7px 10px; font-weight: 700; letter-spacing: .5px; color: #4fd1e8; border-bottom: 1px solid #3a3d48; }
+.c-com .r { display: flex; flex-direction: column; padding: 6px 10px; border-bottom: 1px solid #2c2f3a; }
+.c-com .r b { font-size: 12.5px; }
+.c-com .r span { color: #a9adb8; font-size: 11px; }
+.c-com .r em { font-style: normal; color: #8be34a; font-weight: 700; }
+.c-com .r.none { color: #a9adb8; }
+/* Own-ship on geo-referenced charts */
+.own-ac { transition: transform .3s linear; }
+.own-ac path { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.5)); }
+.c-tools .c-ownc.hidden { display: none; }
+.c-tools .c-ownc.on { color: #d22fc9; }
+.c-pop .tag.geo { background: #d22fc9; color: #fff; }
+.c-rot.invert .own-ac { filter: invert(1); }
+/* Documents panel – closer to the airline viewer: dark segmented control, tall teal rows, inset grey rows */
+.d-head { background: #c9c9cd; padding: 9px 14px; }
+.d-head > button.dim { color: #8e8e93; font-size: 17px; }
+.d-head > button[data-edit] { color: #8e8e93; font-size: 17px; }
+.d-head .seg { background: #1c1c1e; border-radius: 10px; padding: 2px; }
+.d-head .seg button { color: #fff; font-size: 15px; padding: 7px 16px; }
+.d-head .seg button.on { background: #6d6e72; }
+.d-head .seg i { color: #3fd7e8; }
+.d-search { background: #1c1c1e; padding: 0 0 10px 6px; }
+.d-search input { border-radius: 0 0 14px 14px; padding: 10px 12px; font-size: 16px; }
+.d-search svg { display: none; }
+.d-search button { color: #fff; font-size: 16px; padding: 0 8px; }
+.d-row { padding: 20px 16px; font-size: 17px; }
+.d-row.teal { background: #3c9d91; border-bottom: 1.5px solid rgba(255,255,255,.85); }
+.d-row.grey { background: #8b8b8e; padding: 20px 16px 20px 40px; border-bottom: 1.5px solid #e9e9ea; box-shadow: inset 20px 0 0 #8b8b8e; font-size: 16px; }
+.d-row .tri { border-top-width: 10px; }
+.d-row.grey .cnt { font-size: 16px; }
+.d-body { max-height: 620px; background: #0e1014; }
+
+/* Charts ENR: lat/lon grid and COM AREAS like the airline map */
+.grat-lbl { color: #3fb6c8; font: 700 12px Arial, sans-serif; white-space: nowrap; pointer-events: none; }
+.grat-lbl.top { transform: translate(4px, 4px); }
+.grat-lbl.right { transform: translate(calc(-100% - 6px), -16px); }
+.c-layer { line-height: 1.1; }
+.c-com { width: 300px; border-radius: 0; background: #0f1012; font: 15px Arial, sans-serif; right: 8px; top: auto; bottom: 8px; max-height: 38%; box-shadow: 0 0 0 1px #7d7d7d; }
+.c-com header { background: #8a8a8a; color: #fff; text-align: center; font-size: 18px; font-weight: 700; letter-spacing: 0; padding: 6px; border: 0; }
+.c-com .nm { background: #63dcea; color: #2b5b63; font-size: 17px; padding: 4px 12px; }
+.c-com .fr { display: grid; grid-template-columns: 80px 70px 1fr; gap: 8px; padding: 3px 10px; color: #fff; font-weight: 700; font-size: 14px; }
+.c-com .fr span { font-weight: 600; }
+.c-com .fr.none { display: block; color: #aaa; }
+.c-com { right: 62px; }

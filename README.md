@@ -8,13 +8,14 @@ An iPad electronic flight bag for flight simulation, modelled on the apps airlin
 
 | App | What it does |
 | --- | --- |
-| **Charts** | Airline-style chart viewer. Every airport has a live **Airport Moving Map** (TAXI › AMM) in the style of Lido airport charts: runways, yellow taxiway guidelines, aprons, stands, holding points, taxiway sign labels and taxiway search, with your aircraft on it. ENR map with your route, airports, VOR/NDB, FIRs, radar and SIGMETs; aerodrome view with GEN / SID / STAR / APPR / TAXI, USER bookmarks, day/night, rotate. Jeppesen charts through **Navigraph**, your own PDF charts, and generated 10-9 airport diagram / 10-1P airport information pages for every airport. Documents panel for company docs. |
+| **Charts** | Airline-style chart viewer. Every airport has a live **Airport Moving Map** (TAXI › AMM) in the style of Lido airport charts: runways, yellow taxiway guidelines, aprons, stands, holding points, taxiway sign labels and taxiway search, with your aircraft on it. ENR map with your route, airports, VOR/NDB, FIRs, radar and SIGMETs; aerodrome view with GEN / SID / STAR / APPR / TAXI, USER bookmarks, day/night, rotate. Lido charts from MSFS 2024, your own PDF charts, and a generated, geo-referenced 10-9 airport diagram (with your aircraft on it) / 10-1P airport information pages for every airport. Documents panel for company docs. |
 | **Enroute** | Moving-map enroute chart on terrain with your live aircraft (follow mode, GS/ALT/TRK/VS strip); zoom in near an airport and the ground map appears automatically. route with airway/FL boxes, FIR boundaries, radar timeline with playback, SIGMETs, live VATSIM ATC frequencies, runway/airport info sheets, measuring, drawing and range rings. Jumps straight into Charts for SID/STAR/APP/TAXI. |
 | **OPT** | Onboard performance tool for the A320, A330-300, A340-600, A350-900, 737-800/-900ER/-9, 747-400, 757-200 and 787-9: TKO Dispatch, TKO All Engine, LDG Dispatch, LDG Enroute. FLEX / assumed temperature, N1, V-speeds, CONF/flaps per type, field/climb limits, landing distances per autobrake. Prefills from the OFP and live METAR, compares with the SimBrief TLR. Simplified model. |
+| **GA folder**: **VFR Map**, **W&B**, **E6B** | A Home Screen folder of light-aircraft apps. VFR Map: moving map with track vector, glide-range ring and the nearest airports. W&B: weight and balance for the C172, PA-28 and SR22 with the CG envelope. E6B: wind triangle, TAS / density altitude, time and fuel. They switch to the GA aircraft loaded in the sim. |
 | **Briefing** | SimBrief: import latest OFP, summary, full OFP, navlog, fuel & weights, weather, ATC flight plan, maps; dispatch new flights on SimBrief, generate in-app through the SimBrief API, or create an offline flight. |
 | **Weather** | Decoded METAR, TAF, runway head/crosswinds and radar for departure, destination, alternates and favourites. |
 | **Checklist**, **ScratchPad**, **Library**, **Clock**, **Converter**, **Logbook** | Electronic normal checklist, handwriting pad with CRAFT/ATIS/TO-data templates, PDF document library, UTC/OOOI block times/timers, unit & fuel uplift converter, flight log with CSV export. |
-| **App Store**, **Settings** | Install and remove apps; iPadOS-style settings for SimBrief, Navigraph, fleet, units, display, wallpaper, Connect iPad. |
+| **App Store**, **Settings** | Install and remove apps; iPadOS-style settings for SimBrief, simulator, fleet, units, display, wallpaper, Connect iPad. |
 
 iPadOS touches: home screen with widgets (UTC clock, simulator, weather, route, flight timeline), dock with recents and App Library, Search (pull down), Control Center (tap the top-right of the status bar), long-press app menus and jiggle editing, app switcher, brightness and Night Shift.
 
@@ -52,18 +53,17 @@ MSFS 2024 ships Lido charts, but the sim only exposes them to code running insid
 1. Install the panel: double-click `build-msfs-panel.bat` (needs the MSFS 2024 SDK; it builds the package and copies it to your Community folder).
 2. Start the Flight Bag on the sim PC (`Rotaidem Flight Bag.exe` or `Start EFB.bat`).
 3. In MSFS 2024 open **Flight Bag Lido** from the toolbar and keep it open. Use its **Test** button to check an airport.
-4. In Charts, airports now list Lido charts (tagged LIDO) next to Navigraph, imported PDFs and the generated pages – on the PC and on the iPad.
+4. In Charts, airports now list Lido charts (tagged LIDO) next to imported PDFs and the generated pages – on the PC and on the iPad.
 
 Charts are relayed in memory only and never saved to disk; they are for use with your own copy of MSFS 2024. This is experimental: the panel and the server relay are built from the SDK's documented chart API, but chart image export depends on the sim allowing its chart images to be read back.
 
-## Navigraph
+## Moving charts
 
-- **Navigraph app (recommended):** Navigraph's own chart web app inside the Flight Bag. Sign in with your normal Navigraph account. If the login doesn't stick inside the app (some browsers block it), use *Open in a new window*.
-- **Built-in integration in Charts/Enroute:** needs a client ID and secret from the [Navigraph developer programme](https://navigraph.com/partners) – regular subscribers don't have these, which is why “Connect Navigraph” can't work without one.
+Generated 10-9 airport diagrams are geo-referenced whenever every runway has real threshold coordinates (marked GEO-REFERENCED on the chart and ✈ in the chart list). Your aircraft is drawn on them live, in Charts (tap the aircraft button to keep it centred) and in Enroute (TAXI opens the diagram beside the map). Lido and imported PDF charts carry no geo-reference, so they stay static – as on real EFBs.
 
 ## Live aircraft (SimConnect / X-Plane)
 
-The PC server reads your aircraft from the simulator and streams it to the EFB (and to the iPad over Wi-Fi) four times a second.
+The PC server reads your aircraft from the simulator and streams it to the EFB (and to the iPad over Wi-Fi) four times a second. It also reports which aircraft is loaded (MSFS: title, ATC model and type, tail; X-Plane: ICAO code, tail, name). OPT then switches to that airliner and W&B to that GA type by itself – turn this off in Settings › Simulator › Detect aircraft automatically. `node tools/test-aircraft.mjs` checks the matching rules.
 
 - **Microsoft Flight Simulator 2020 / 2024** – run `pip install SimConnect` once on the sim PC. Start the EFB with `Start EFB.bat`; it connects when MSFS is running.
 - **X-Plane 12.1+** – nothing to install; the EFB uses X-Plane's built-in web API on port 8086.
@@ -79,13 +79,11 @@ Ground maps come from OpenStreetMap through the Overpass API, so detail varies b
 
 **In-app OFP generation (SimBrief API)** – needs a PHP host. Copy `api/config.example.php` to `api/config.php` and paste your API key. `api/config.php` is git-ignored, and the key never reaches the browser: `api/simbrief.php` signs requests on the server. On static hosting use “Plan on SimBrief.com”, which opens SimBrief's dispatch page pre-filled.
 
-**Navigraph (Jeppesen charts)** – the Navigraph Charts API needs a client ID and secret from the [Navigraph developer programme](https://navigraph.com/partners). Enter them in Settings › Navigraph, then sign in with your Navigraph account (Charts subscription) using the QR / code device flow.
-
-**TAF & SIGMET** – aviationweather.gov doesn't allow browser requests from other sites, so on a PHP host `api/wx.php` proxies them. Without it, TAFs come from the SimBrief OFP and SIGMETs are unavailable.
+**TAF, SIGMET & surface weather** – aviationweather.gov doesn't allow browser requests from other sites, so the Flight Bag server (the PC app / `serve.py`) relays them, and on a PHP host `api/wx.php` does the same. Without either, TAFs come from the SimBrief OFP and SIGMETs, turbulence, icing, volcanic ash and surface conditions are unavailable. Winds & temps aloft come from Open-Meteo (GFS). Enroute's Weather Layers panel lists High Level SigWx, Echo Tops and Lightning greyed out because there is no free source for them.
 
 ## Data sources
 
-OurAirports (airports, runways, frequencies, navaids – bundled in `data/`, rebuild with `node tools/build-data.mjs <csv-dir>`), Natural Earth via world-atlas, VATSpy data project (FIRs), VATSIM (METAR, live ATC), RainViewer (radar), Esri World Physical (terrain), SimBrief, Navigraph.
+OurAirports (airports, runways, frequencies, navaids – bundled in `data/`, rebuild with `node tools/build-data.mjs <csv-dir>`), Natural Earth via world-atlas, VATSpy data project (FIRs), VATSIM (METAR, live ATC), RainViewer (radar), Esri World Physical (terrain), aviationweather.gov (SIGMET, METAR), Open-Meteo (winds aloft), SimBrief.
 
 ## Development
 

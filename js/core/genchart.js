@@ -1,5 +1,5 @@
 // Generated airport pages (diagram + information) drawn as SVG from the open
-// airport database. They are always available, even without Navigraph, and are
+// airport database. They are always available for every airport, and are
 // clearly marked as not for navigation.
 import { esc } from "./ui.js";
 import { fmtLatLon } from "./geo.js";
@@ -131,8 +131,20 @@ export function airportDiagram(ap, { airac } = {}) {
     <text x="8" y="33" font-size="9.5">ARP ${esc(fmtLatLon(ap.lat, ap.lon))}</text></g>`;
   if (segs.some(s => s.synth)) body += `<text x="${box.x + box.w / 2}" y="${box.y + box.h - 12}" ${FONT} font-size="9" text-anchor="middle" font-style="italic">Runway positions approximated – threshold coordinates not available</text>`;
   body += `<text x="${box.x + box.w - 14}" y="${box.y + box.h - 12}" ${FONT} font-size="8.5" text-anchor="end">Taxiways and aprons not depicted</text>`;
+  // Geo-referenced when every runway has real threshold coordinates: own-ship can be drawn (see ownchart.js).
+  if (segs.length && !segs.some(s => s.synth)) {
+    const geo = { lat: ap.lat, lon: ap.lon, cosL, minX, minY, k, ox, oy, bx: box.x, by: box.y, bw: box.w, bh: box.h };
+    body += `<g transform="translate(${box.x + box.w - 120} ${box.y + 14})" ${FONT}><rect width="106" height="18" rx="3" fill="#fff" stroke="#000" stroke-width=".8"/>
+      <path d="M12 4 L13.4 8 L19 10.5 V12 L13.4 11 L13.2 14.5 L15 16 H9 L10.8 14.5 L10.6 11 L5 12 V10.5 L10.6 8Z" fill="#000"/><text x="24" y="13" font-size="9" font-weight="700">GEO-REFERENCED</text></g>`;
+    body += `<g class="geo-own" data-geo='${JSON.stringify(geo)}'></g>`;
+  }
   body += footer();
   return wrap(body);
+}
+
+/** Chart coordinates of a lat/lon on a geo-referenced diagram (geo = the data-geo object). */
+export function geoToChart(geo, lat, lon) {
+  return { x: geo.ox + ((lon - geo.lon) * geo.cosL * 60 - geo.minX) * geo.k, y: geo.oy + (-(lat - geo.lat) * 60 - geo.minY) * geo.k };
 }
 
 /** 10-1P style airport information page. */

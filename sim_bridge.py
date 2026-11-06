@@ -10,6 +10,7 @@ MSFS needs the Python SimConnect package once:  pip install SimConnect
 X-Plane 12.1+ needs nothing extra (Settings > Network > "Enable web server API"
 is on by default).
 """
+import base64
 import json
 import math
 import threading
@@ -51,15 +52,19 @@ def _msfs_loop():
         _set(msfs="Connected")
         aq = AircraftRequests(sm, _time=200)
         rad = lambda v: (math.degrees(v) % 360) if v is not None else None
+        txt = lambda v: v.decode(errors="ignore").strip() if isinstance(v, bytes) else v
+        ident, ident_at = {}, 0
         try:
             while True:
+                # Aircraft identity changes rarely: read it every 5 s (used to auto-detect the type).
+                if time.time() - ident_at > 5:
+                    ident_at = time.time()
+                    ident = {k: txt(aq.get(v)) for k, v in (("title", "TITLE"), ("acModel", "ATC_MODEL"), ("acType", "ATC_TYPE"), ("callsign", "ATC_ID"))}
                 lat = aq.get("PLANE_LATITUDE")
                 lon = aq.get("PLANE_LONGITUDE")
                 if lat is None or lon is None:
                     raise RuntimeError("no data")
                 vs = aq.get("VERTICAL_SPEED")
-                title = aq.get("TITLE")
-                atc = aq.get("ATC_ID")
                 _set(
                     connected=True, source="MSFS", status="Connected to MSFS", ts=time.time(),
                     lat=lat, lon=lon,
@@ -69,8 +74,7 @@ def _msfs_loop():
                     gs=aq.get("GROUND_VELOCITY"), ias=aq.get("AIRSPEED_INDICATED"),
                     vs=vs * 60 if vs is not None else None,
                     onGround=bool(aq.get("SIM_ON_GROUND")),
-                    title=title.decode(errors="ignore") if isinstance(title, bytes) else title,
-                    callsign=atc.decode(errors="ignore") if isinstance(atc, bytes) else atc,
+                    **ident,
                 )
                 time.sleep(0.25)
         except Exception:
@@ -96,6 +100,17 @@ XP_REFS = {
     "vs": "sim/flightmodel/position/vh_ind_fpm",
     "gnd": "sim/flightmodel/failures/onground_any",
 }
+XP_IDENT = {"acIcao": "sim/aircraft/view/acf_ICAO", "callsign": "sim/aircraft/view/acf_tailnum", "title": "sim/aircraft/view/acf_ui_name"}
+
+
+def _xp_text(v):
+    """Byte-array datarefs arrive base64-encoded; strip the C string padding."""
+    if isinstance(v, str):
+        try:
+            return base64.b64decode(v).split(b"\0")[0].decode(errors="ignore").strip()
+        except Exception:
+            return v
+    return None
 
 
 def _get(url, timeout=1.5):
@@ -111,9 +126,18 @@ def _xplane_loop():
                 d = _get(f"{XP}/datarefs?filter[name]={name}")["data"]
                 if d:
                     ids[k] = d[0]["id"]
+            ident_ids = {}
+            for k, name in XP_IDENT.items():
+                d = _get(f"{XP}/datarefs?filter[name]={name}")["data"]
+                if d:
+                    ident_ids[k] = d[0]["id"]
+            ident, ident_at = {}, 0
             _set(xplane="Connected")
             while True:
                 v = {k: _get(f"{XP}/datarefs/{i}/value")["data"] for k, i in ids.items()}
+                if time.time() - ident_at > 5:
+                    ident_at = time.time()
+                    ident = {k: _xp_text(_get(f"{XP}/datarefs/{i}/value")["data"]) for k, i in ident_ids.items()}
                 if state().get("source") == "MSFS":
                     time.sleep(2)
                     continue
@@ -125,6 +149,7 @@ def _xplane_loop():
                     hdg=v.get("hdg"), trk=v.get("trk"),
                     gs=v["gs_ms"] * 1.94384 if v.get("gs_ms") is not None else None,
                     ias=v.get("ias"), vs=v.get("vs"), onGround=bool(v.get("gnd")),
+                    **ident,
                 )
                 time.sleep(0.25)
         except Exception:

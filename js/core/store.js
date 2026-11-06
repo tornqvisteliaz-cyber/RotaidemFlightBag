@@ -4,12 +4,11 @@ import { emit } from "./ui.js";
 const KEY = "rfb.settings";
 const DEFAULTS = {
   simbriefUser: "",
-  navigraphClientId: "",
-  navigraphClientSecret: "",
   units: "kg",
   timeSep: ".",
   chartTheme: "day",
   autoFetchOfp: true,
+  autoAircraft: true,
   fleet: {
     "A320": ["RF-320A", "RF-320B", "RF-320C"],
     "A330-300": ["RF-330A", "RF-330B"],

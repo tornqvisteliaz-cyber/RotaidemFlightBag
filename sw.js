@@ -1,15 +1,15 @@
 // Offline cache: app shell + airport database are cached on install; CDN libraries,
 // map land data and chart libraries are cached the first time they are used.
-const VERSION = "rfb-v6";
+const VERSION = "rfb-v8";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest",
   "css/ios.css", "css/apps.css", "css/enroute.css", "css/tools.css", "css/live.css", "css/briefing.css", "css/home.css",
   "js/main.js", "js/core/ui.js", "js/core/store.js", "js/core/icons.js", "js/core/flight.js", "js/core/airports.js",
-  "js/core/geo.js", "js/core/wx.js", "js/core/map.js", "js/core/navigraph.js", "js/core/genchart.js", "js/core/perf.js",
+  "js/core/geo.js", "js/core/wx.js", "js/core/map.js", "js/core/genchart.js", "js/core/perf.js",
   "js/core/registry.js", "js/core/wallpapers.js", "js/core/pair.js", "js/core/sim.js", "js/core/amm.js", "js/core/sf.js", "js/core/widgets.js", "js/core/lido.js",
   "js/apps/charts.js", "js/apps/enroute.js", "js/apps/opt.js", "js/apps/briefing.js", "js/apps/weather.js", "js/apps/checklist.js",
   "js/apps/scratchpad.js", "js/apps/library.js", "js/apps/clock.js", "js/apps/settings.js", "js/apps/appstore.js",
-  "js/apps/converter.js", "js/apps/logbook.js", "js/apps/navcharts.js",
+  "js/apps/converter.js", "js/apps/logbook.js", "js/apps/ga.js", "js/core/aircraft.js", "js/core/ownchart.js",
   "data/airports.json", "data/navaids.json", "assets/apple-touch-icon.png", "assets/icon-192.png",
 ];
 const RUNTIME = ["cdnjs.cloudflare.com", "cdn.jsdelivr.net", "raw.githubusercontent.com", "server.arcgisonline.com", "basemaps.cartocdn.com"];
@@ -23,7 +23,7 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  // Live data (SimBrief, weather, VATSIM, Navigraph API) always goes to the network.
+  // Live data (SimBrief, weather, VATSIM) always goes to the network.
   if (url.origin === location.origin) {
     if (url.pathname.includes("/api/") || url.pathname.includes("/sim/") || url.pathname.includes("/lido/") || url.pathname.endsWith("lan.json")) return;
     // Network first for the app itself so updates arrive, cache as fallback.

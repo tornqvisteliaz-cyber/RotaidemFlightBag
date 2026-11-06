@@ -1,7 +1,7 @@
 // Enroute – moving-map style enroute chart: terrain base map, route, FIRs,
 // radar timeline, SIGMETs, live VATSIM frequencies, measuring and drawing tools.
 /* global L */
-import { $, $$, html, esc, on, listen, toast, popover, closePopovers, pad, secToHM, fmtNum } from "../core/ui.js";
+import { $, $$, html, esc, on, listen, toast, popover, closePopovers, pad, secToHM, fmtNum, panZoom } from "../core/ui.js";
 import { UI } from "../core/icons.js";
 import { kv } from "../core/store.js";
 import { getFlight, setFlight, fetchSimbrief } from "../core/flight.js";
@@ -12,21 +12,18 @@ import * as M from "../core/map.js";
 import { fetchGround, groundLayer } from "../core/amm.js";
 import { simState, onSim } from "../core/sim.js";
 import { allAirports } from "../core/airports.js";
-import { settings } from "../core/store.js";
-import * as NG from "../core/navigraph.js";
+import { airportDiagram, PAGE_W, PAGE_H } from "../core/genchart.js";
+import { chartOwnship } from "../core/ownchart.js";
 
 export default { mount: (root, ctx, args) => new EnrouteApp(root, ctx, args) };
 
-// Map types: Navigraph enroute charts when signed in with the tiles scope, otherwise the built-in maps.
-const MAP_TYPES = {
-  "High IFR": { ng: "IFR HIGH", base: "fd" }, "Low IFR": { ng: "IFR LOW", base: "fd" }, "VFR": { ng: "VFR", base: "fd" },
-  "World": { ng: "WORLD", base: "fd" }, "Terrain": { base: "fd" }, "Plain": { base: "charts" },
-};
+const MAP_TYPES = { "Terrain": { base: "fd", sub: "Shaded relief, topographic detail zoomed in" }, "Plain": { base: "charts", sub: "Clean light map" } };
 
 class EnrouteApp {
   constructor(root, ctx) {
     this.root = root; this.ctx = ctx;
-    this.opts = kv.get("enroute.opts", { terrain: true, fir: true, wx: true, sig: true, atc: false, labels: true, mapType: "High IFR" });
+    this.opts = kv.get("enroute.opts", { terrain: true, fir: true, wx: true, sig: true, atc: false, labels: true, mapType: "Terrain" });
+    if (!MAP_TYPES[this.opts.mapType]) this.opts.mapType = "Terrain"; // older versions had Navigraph map types
     this.locked = false;
     this.tool = null;
     this.render();
@@ -71,10 +68,12 @@ class EnrouteApp {
       <div class="fd-measure hidden"></div>
       <div class="map-zoom"><button data-z="in" aria-label="Zoom in">+</button><button data-z="out" aria-label="Zoom out">−</button></div>
       <div class="fd-own hidden"></div>
+      <div class="fd-chart hidden"></div>
       <div class="fd-ground hidden"><input placeholder="Taxiway" maxlength="5" autocomplete="off" spellcheck="false"><span></span></div>
       <div class="fd-bottom">
         <button class="fd-wx" data-a="wx">Wx</button>
         <div class="fd-wxdesc"></div>
+        <button class="fd-alt" data-a="alt"><span>ALT</span><b>FL${this.opts.windFl || 340}</b></button>
         <button class="fd-play" data-a="play">${UI.play}</button>
         <div class="fd-time"><b class="d"></b><b class="t"></b></div>
         <div class="fd-slider"><input type="range" min="0" max="0" value="0"><div class="ticks"></div></div>
@@ -135,24 +134,15 @@ class EnrouteApp {
   }
 
   async applyBase() {
-    const t = MAP_TYPES[this.opts.mapType] || MAP_TYPES["High IFR"];
+    const t = MAP_TYPES[this.opts.mapType] || MAP_TYPES.Terrain;
     const style = this.opts.terrain ? t.base : "charts";
-    this.ngLayer?.remove(); this.ngLayer = null;
-    if (t.ng && NG.isConfigured() && settings().navigraphTiles) {
-      try {
-        this.ngLayer = await M.navigraphTiles(this.map, t.ng, "DAY");
-        this.ngLayer.addTo(this.map);
-      } catch (e) { toast(`Navigraph ${this.opts.mapType}: ${e.message}`); }
-    }
     if (this.bm?.style !== style || !this.bm) {
       this.bm?.remove();
       this.bm = M.basemap(this.map, style);
       this.bm.style = style;
     }
-    this.bm.group[this.ngLayer ? "remove" : "addTo"](this.map);
-    this.bm.setLabels(!this.ngLayer && this.opts.labels !== false);
+    this.bm.setLabels(this.opts.labels !== false);
     this.el.classList.toggle("plain", style === "charts");
-    this.el.classList.toggle("ngmap", !!this.ngLayer);
   }
 
   async onFlight(first) {
@@ -190,6 +180,7 @@ class EnrouteApp {
     set(this.lyr.fir, this.opts.fir); set(this.lyr.fir?.labels, this.opts.fir && this.opts.labels);
     set(this.lyr.radar?.layer, this.opts.wx);
     set(this.lyr.sig, this.opts.sig);
+    for (const k of ["turb", "ice", "va", "sfc", "winds"]) set(this.lyr[k], this.opts[k]);
     set(this.lyr.atc, this.opts.atc);
     kv.set("enroute.opts", this.opts);
     this.renderWxDesc();
@@ -197,6 +188,18 @@ class EnrouteApp {
 
   // ---------------------------------------------------------------- weather
   async loadWx() {
+    // Radar and SIGMETs come from different services; load them side by side so one slow source doesn't hold up the other.
+    // Winds and METAR dots don't depend on the slower radar/SIGMET sources: show them right away.
+    this.lyr.sfc ||= M.surfaceLayer(this.map);
+    this.lyr.winds ||= M.windsLayer(this.map);
+    this.lyr.winds.level = this.opts.windFl || 340;
+    this.apply();
+    await Promise.all([this.loadRadar(), this.loadSig()]);
+    this.wxUpdated = Date.now();
+    this.apply();
+    this.renderTop();
+  }
+  async loadRadar() {
     try {
       this.lyr.radar = await M.radar(this.map, { opacity: 0.6 });
       const fr = this.lyr.radar.frames;
@@ -210,13 +213,16 @@ class EnrouteApp {
       }).join("");
       this.setFrame(this.lyr.radar.index);
     } catch { toast("Radar unavailable"); }
+  }
+  async loadSig() {
     try {
       this.lyr.sig = await M.sigmetLayer({ fd: true });
+      this.lyr.turb = await M.sigmetLayer({ fd: true, hazard: /TURB|MTW/, color: "#e07b00" });
+      this.lyr.ice = await M.sigmetLayer({ fd: true, hazard: /ICE/, color: "#1f8fd6" });
+      this.lyr.va = await M.sigmetLayer({ fd: true, hazard: /VA/, color: "#8a3fc7" });
       this.sigCount = this.lyr.sig.unavailable ? 0 : this.lyr.sig.count;
       this.sigUnavailable = this.lyr.sig.unavailable;
     } catch { this.sigUnavailable = true; }
-    this.apply();
-    this.renderTop();
   }
   setFrame(i) {
     const r = this.lyr.radar;
@@ -242,6 +248,11 @@ class EnrouteApp {
     const parts = [];
     if (this.opts.wx) parts.push("Radar");
     if (this.opts.sig) parts.push(this.sigUnavailable ? "SIGMETs (n/a)" : "SIGMETs");
+    if (this.opts.turb) parts.push("Turbulence");
+    if (this.opts.ice) parts.push("Icing");
+    if (this.opts.winds) parts.push(`Winds FL${this.opts.windFl || 340}`);
+    if (this.opts.sfc) parts.push("Surface");
+    if (this.opts.va) parts.push("Volcanic Ash");
     if (this.opts.atc) parts.push("ATC");
     if (this.opts.fir) parts.push("FIR");
     const d = $(".fd-wxdesc", this.el);
@@ -265,7 +276,14 @@ class EnrouteApp {
       case "apt": return this.airportPicker(b);
       case "rwy": return this.runwayPicker(b);
       case "info": return this.airportSheet((this.apt || f?.orig)?.icao);
-      case "REF": case "STAR": case "APP": case "TAXI": case "SID": {
+      case "TAXI": {
+        // The selected airport, else whichever end of the flight the aircraft is nearer to.
+        const s0 = simState();
+        const a2 = this.apt || (s0.connected && f?.dest && distNM(s0.lat, s0.lon, f.dest.lat, f.dest.lon) < distNM(s0.lat, s0.lon, f.orig.lat, f.orig.lon) ? f.dest : f?.orig);
+        if (!a2?.icao) return toast("Load a flight or select an airport first");
+        return this.movingChart(a2.icao);
+      }
+      case "REF": case "STAR": case "APP": case "SID": {
         const cat = { REF: "GEN", STAR: "STAR", APP: "APPR", TAXI: "TAXI", SID: "SID" }[a];
         const icao = a === "SID" ? f?.orig?.icao : a === "STAR" || a === "APP" ? (this.apt?.icao !== f?.orig?.icao ? this.apt?.icao : f?.dest?.icao) || f?.dest?.icao : this.apt?.icao || f?.orig?.icao;
         if (!icao) return toast("Load a flight or select an airport first");
@@ -273,7 +291,8 @@ class EnrouteApp {
       }
       case "maptype": return this.mapTypePicker(b);
       case "north": return this.map?.setView(this.map.getCenter(), this.map.getZoom());
-      case "wx": return this.wxPicker(b);
+      case "wx": return this.weatherLayers(b);
+      case "alt": return this.altPicker(b);
       case "play": return this.play();
       case "flight": return this.flightPanel(b);
       case "routeinfo": return this.routeInfo(b);
@@ -281,7 +300,7 @@ class EnrouteApp {
       case "search": return this.search(b);
       case "fitroute": if (this.lyr.route?.bounds?.isValid()) this.map.fitBounds(this.lyr.route.bounds, { padding: [60, 60] }); return;
       case "wxalert": return this.wxAlerts(b);
-      case "settings": return this.toolAct("layers", b);
+      case "settings": return this.wxPicker(b);
       case "lock":
         this.locked = !this.locked;
         for (const h of ["dragging", "touchZoom", "scrollWheelZoom", "doubleClickZoom", "boxZoom", "keyboard"]) this.locked ? this.map[h].disable() : this.map[h].enable();
@@ -350,9 +369,7 @@ class EnrouteApp {
   }
 
   mapTypePicker(anchor) {
-    const ng = NG.isConfigured() && settings().navigraphTiles;
-    const p = popover(anchor, `<div class="fd-pop list"><header>Map</header>${Object.entries(MAP_TYPES).map(([k, t]) => `<button data-m="${k}" class="${k === this.opts.mapType ? "on" : ""}"><b>${k}</b><span>${t.ng ? (ng ? "Navigraph enroute chart" : "Terrain map · Navigraph chart when connected") : t.base === "fd" ? "Shaded relief" : "Clean light map"}</span></button>`).join("")}<button data-ngweb><b>Navigraph Charts</b><span>Navigraph's own map and charts (your account)</span></button></div>`, { side: "right", width: 300 });
-    on(p.el, "click", "[data-ngweb]", () => { closePopovers(); this.ctx.open("navcharts", { icao: (this.apt || getFlight()?.orig)?.icao }); });
+    const p = popover(anchor, `<div class="fd-pop list"><header>Map</header>${Object.entries(MAP_TYPES).map(([k, t]) => `<button data-m="${k}" class="${k === this.opts.mapType ? "on" : ""}"><b>${k}</b><span>${t.sub}</span></button>`).join("")}</div>`, { side: "right", width: 300 });
     on(p.el, "click", "[data-m]", (e, b) => {
       closePopovers();
       this.opts.mapType = b.dataset.m;
@@ -361,8 +378,68 @@ class EnrouteApp {
     });
   }
 
+  // FliteDeck "Weather Layers": tap a row to toggle it; layers without a free data source are shown greyed.
+  weatherLayers(anchor) {
+    const ago = t => {
+      if (!t) return "";
+      const m = Math.max(0, Math.round((Date.now() - t) / 60e3));
+      return `Issued: ${m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`} ago`;
+    };
+    const rows = [
+      ["wx", "Radar", "Precipitation, RainViewer", () => this.lyr.radar?.frames?.[this.lyr.radar.index]?.time * 1000],
+      [null, "High Level SigWx", "Not Available"],
+      [null, "Echo Tops", "Not Available"],
+      ["turb", "Turbulence", "SIGMET TURB / MTW", () => this.lyr.turb?.issued],
+      ["ice", "Icing Potential", "SIGMET ICE", () => this.lyr.ice?.issued],
+      ["winds", "Winds & Temps Aloft", `FL${this.opts.windFl || 340} · GFS`, () => this.lyr.winds?.issued],
+      "gap",
+      ["sfc", "Surface Conditions", "METAR flight category", () => this.lyr.sfc?.issued],
+      [null, "Lightning", "Not Available"],
+      ["sig", "SIGMETs", "International SIGMETs", () => this.lyr.sig?.issued],
+      ["va", "Volcanic Ash Advisories", "SIGMET VA", () => this.lyr.va?.issued],
+    ];
+    const updTxt = () => { const u = this.wxUpdated && new Date(this.wxUpdated); return u ? `${pad(u.getUTCHours())}${pad(u.getUTCMinutes())}Z ${pad(u.getUTCDate())} ${u.toLocaleString("en", { month: "short", timeZone: "UTC" }).toUpperCase()}` : "—"; };
+    const body = () => `<div class="fd-wl"><header><b>Weather Layers</b><button data-wlx aria-label="Close">✕</button></header>
+      ${rows.map(r => {
+        if (r === "gap") return `<div class="gap"></div>`;
+        const [k, l, sub, t] = r;
+        const na = !k || (this.sigUnavailable && /^(sig|turb|ice|va)$/.test(k));
+        const on = k && this.opts[k] && !na;
+        const issued = on && t?.() ? ago(t()) : "";
+        return `<div class="row ${na ? "na" : ""}"><button class="main" ${k && !na ? `data-wl="${k}"` : "disabled"}>
+            <span class="t"><b>${l}</b>${na ? "" : `<i class="rf">⟳</i>`}</span><small>${na ? (k ? "Needs the Flight Bag server" : sub) : issued || sub}</small>
+            <em class="ck ${on ? "on" : ""} ${na ? "dl" : ""}">${na ? "" : on ? "✓" : ""}</em></button><span class="chev">›</span></div>`;
+      }).join("")}
+      <footer><span>Last Updated:<br>${updTxt()}</span><button data-wlr><i>⟳</i> Refresh</button></footer></div>`;
+    const p = popover(anchor, body(), { side: "top", width: 330, className: "fd-light" });
+    const redraw = () => { p.el.firstElementChild.innerHTML = body(); };
+    on(p.el, "click", "[data-wl]", (e, b) => { const k = b.dataset.wl; this.opts[k] = !this.opts[k]; this.apply(); redraw(); setTimeout(redraw, 2500); });
+    on(p.el, "click", "[data-wlx]", () => closePopovers());
+    on(p.el, "click", "[data-wlr]", async () => {
+      this.lyr.radar?.layer.remove();
+      for (const k of ["sig", "turb", "ice", "va"]) this.lyr[k]?.remove();
+      toast("Refreshing weather…");
+      await this.loadWx();
+      this.lyr.sfc.refresh(); this.lyr.winds.refresh();
+      redraw();
+    });
+  }
+  altPicker(anchor) {
+    const lv = this.lyr.winds?.levels || [50, 100, 180, 240, 300, 340, 390, 450];
+    const cur = this.opts.windFl || 340;
+    const p = popover(anchor, `<div class="fd-pop list"><header>Winds &amp; Temps Altitude</header>${[...lv].reverse().map(l => `<button data-fl="${l}" class="${l === cur ? "on" : ""}"><b>FL${String(l).padStart(3, "0")}</b></button>`).join("")}</div>`, { side: "top", width: 200 });
+    on(p.el, "click", "[data-fl]", (e, b) => {
+      closePopovers();
+      this.opts.windFl = +b.dataset.fl;
+      $(".fd-alt b", this.el).textContent = "FL" + b.dataset.fl;
+      if (this.lyr.winds) { this.lyr.winds.level = this.opts.windFl; this.lyr.winds.refresh(); }
+      if (!this.opts.winds) { this.opts.winds = true; }
+      this.apply();
+    });
+  }
+
   wxPicker(anchor) {
-    const rows = [["wx", "Radar (RainViewer)"], ["sig", "SIGMETs" + (this.sigUnavailable ? " – source n/a" : "")], ["atc", "ATC frequencies (VATSIM)"], ["fir", "FIR boundaries"], ["labels", "FIR labels"]];
+    const rows = [["atc", "ATC frequencies (VATSIM)"], ["fir", "FIR boundaries"], ["labels", "FIR labels"], ["wx", "Radar"], ["sig", "SIGMETs"]];
     const p = popover(anchor, `<div class="fd-pop toggles">${rows.map(([k, l]) => `<label><span>${l}</span><input type="checkbox" data-k="${k}" ${this.opts[k] ? "checked" : ""}><i></i></label>`).join("")}</div>`, { side: "top", width: 320 });
     on(p.el, "change", "[data-k]", (e, b) => {
       this.opts[b.dataset.k] = b.checked;
@@ -437,7 +514,8 @@ class EnrouteApp {
     if (t === "terrain") { this.opts.terrain = !this.opts.terrain; b.classList.toggle("on", this.opts.terrain); this.applyBase(); this.apply(); return; }
     if (t === "atc") { this.opts.atc = !this.opts.atc; b.classList.toggle("on", this.opts.atc); if (this.opts.atc && !this.lyr.atc) this.loadAtc(); this.apply(); return; }
     if (t === "clear") { this.drawings.clearLayers(); this.rings.clearLayers(); this.endTool(); toast("Drawings cleared"); return; }
-    if (t === "layers" || t === "settings") return this.wxPicker(b);
+    if (t === "layers") return this.weatherLayers(b);
+    if (t === "settings") return this.wxPicker(b);
     if (this.tool === t) return this.endTool();
     this.endTool();
     this.tool = t;
@@ -475,8 +553,46 @@ class EnrouteApp {
       }
     }
   }
+  // ---------------------------------------------------------------- moving airport chart
+  // TAXI opens the airport diagram beside the map with your aircraft moving on it,
+  // like the terminal-chart split view on the real FliteDeck.
+  async movingChart(icao) {
+    const box = $(".fd-chart", this.el);
+    const ap = await getAirport(icao);
+    if (!ap) return toast(`${icao} not found`);
+    box.innerHTML = `<header><b>${esc(ap.icao)}</b><span>10-9 AIRPORT DIAGRAM</span>
+        <button data-mc="centre" class="on" title="Centre on aircraft"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M20.5 3.5 L3.5 10.6 L11 12.9 L13.3 20.5Z" fill="currentColor"/></svg></button>
+        <button data-mc="ground" title="Airport moving map">AMM</button>
+        <button data-mc="charts" title="All charts">Charts</button>
+        <button data-mc="close" title="Close">✕</button></header>
+      <div class="vp"><div class="pg" style="width:${PAGE_W}px;height:${PAGE_H}px">${airportDiagram(ap, { airac: getFlight()?.airac })}</div></div>`;
+    box.classList.remove("hidden");
+    this.mc = { ap, own: chartOwnship($(".pg svg", box)), centre: true };
+    this.mc.pz = panZoom($(".vp", box), $(".pg", box), { min: 0.2, max: 8 });
+    requestAnimationFrame(() => { this.mc.pz.fit(PAGE_W, PAGE_H); this.mcUpdate(simState()); });
+    if (!this.mc.own) { $('[data-mc="centre"]', box).remove(); toast("Runway positions unknown here – diagram is not geo-referenced"); }
+    $(".vp", box).addEventListener("pointerdown", () => { this.mc && (this.mc.centre = false); $('[data-mc="centre"]', box)?.classList.remove("on"); });
+    box.onclick = e => {
+      const b = e.target.closest("[data-mc]"); if (!b) return;
+      const k = b.dataset.mc;
+      if (k === "close") { box.classList.add("hidden"); box.innerHTML = ""; this.mc = null; }
+      if (k === "charts") this.ctx.open("charts", { icao, cat: "TAXI" });
+      if (k === "ground") { this.map.setView([ap.lat, ap.lon], 14.5); this.checkGround(); }
+      if (k === "centre") {
+        this.mc.centre = !this.mc.centre; b.classList.toggle("on", this.mc.centre);
+        if (this.mc.centre && this.mc.pz.state.s < 1.2) this.mc.pz.zoom(2 / this.mc.pz.state.s);
+        this.mcUpdate(simState());
+      }
+    };
+  }
+  mcUpdate(s) {
+    const p = this.mc?.own?.update(s);
+    if (p && this.mc.centre && s.connected) this.mc.pz.centerOn(p.x, p.y);
+  }
+
   // ---------------------------------------------------------------- live aircraft
   onSim(s) {
+    if (this.mc) this.mcUpdate(s);
     if (!this.map) return;
     this.own.update(s);
     const box = $(".fd-own", this.el);

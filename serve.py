@@ -16,16 +16,20 @@ server; host the folder on a PHP server for in-app SimBrief generation.
 """
 import http.server
 import json
+import re
 import os
 import socket
 import socketserver
 import sys
 import time
 import urllib.parse
+import urllib.request
 import webbrowser
 
 import lido_bridge
 import sim_bridge
+
+WX_CACHE = {}  # url -> (time, body); shortcut: unbounded, fine for a few dozen bbox keys per session
 
 DEFAULT_PORT = 8642
 # When packaged as an .exe (PyInstaller) the web files are unpacked to sys._MEIPASS.
@@ -140,11 +144,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     time.sleep(0.25)
             except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                 return
+        if path == "/api/wx.php":
+            return self.do_wx(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query))
         # Never serve server-side secrets.
         if self.path.split("?")[0].startswith("/api/config"):
             self.send_error(404)
             return
         super().do_GET()
+
+    def do_wx(self, q):
+        """Same as api/wx.php: whitelisted aviationweather.gov relay (it sends no CORS headers)."""
+        kind = (q.get("type") or [""])[0]
+        if kind not in ("taf", "metar", "isigmet"):
+            return self.send_json([], 400)
+        params = {"format": "json"}
+        if q.get("ids"):
+            params["ids"] = re.sub(r"[^A-Z0-9,]", "", q["ids"][0].upper())
+        if q.get("bbox"):
+            params["bbox"] = re.sub(r"[^0-9.,-]", "", q["bbox"][0])
+        url = f"https://aviationweather.gov/api/data/{kind}?" + urllib.parse.urlencode(params)
+        hit = WX_CACHE.get(url)
+        if not hit or time.time() - hit[0] > 300:
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "RotaidemFlightBag/1.3"})
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    hit = (time.time(), r.read() or b"[]")
+                WX_CACHE[url] = hit
+            except Exception:
+                if not hit:
+                    return self.send_json([], 502)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(hit[1])))
+        self.end_headers()
+        self.wfile.write(hit[1])
 
     def log_message(self, fmt, *args):
         pass

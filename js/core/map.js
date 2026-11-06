@@ -2,7 +2,7 @@
 /* global L, topojson */
 import { unwrap, greatCircle, distNM } from "./geo.js";
 import { allAirports, loadNavaids } from "./airports.js";
-import { sigmets } from "./wx.js";
+import { sigmets, metarsBox, windsAloft, CAT_COLOR } from "./wx.js";
 import { esc } from "./ui.js";
 
 const once = new Map();
@@ -37,7 +37,31 @@ export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZo
     preferCanvas: true, renderer: L.canvas({ padding: 0.35, tolerance: 3 }), fadeAnimation: true, markerZoomAnimation: true,
   });
   map.attributionControl.setPrefix("");
+  liveRedraw(map);
   return map;
+}
+
+/**
+ * Leaflet only redraws canvas vectors (FIRs, route, SIGMETs) and our viewport markers at
+ * "moveend", so while you drag or the map follows the aircraft they lag and then snap.
+ * Redraw them during the move too, a few times a second, and fire "livemove" for markers.
+ */
+function liveRedraw(map) {
+  let last = 0, timer = 0;
+  const run = () => {
+    clearTimeout(timer); timer = 0;
+    // During a pinch Leaflet scales the canvas cheaply; a full redraw per step would make it stutter.
+    if (map._animatingZoom || map.touchZoom?._zooming || !map._loaded) return;
+    last = performance.now();
+    const seen = new Set();
+    map.eachLayer(l => { const r = l._renderer; if (r && !seen.has(r) && r._map) { seen.add(r); r._update(); } });
+    map.fire("livemove");
+  };
+  map.on("move", () => {
+    const wait = 110 - (performance.now() - last);
+    if (wait <= 0) run(); else if (!timer) timer = setTimeout(run, wait);
+  });
+  map.on("moveend zoomstart", () => { clearTimeout(timer); timer = 0; });
 }
 
 /**
@@ -51,10 +75,11 @@ export function viewportMarkers(map, items, { pos, want, make, key = (it, z, i) 
   const cache = new Map();
   let shown = new Map();
   let raf = 0;
-  const update = () => {
+  const update = anim => {
     raf = 0;
     if (!map.hasLayer(group)) return;
-    const z = map.getZoom(), b = map.getBounds().pad(pad);
+    const z = anim ? anim.zoom : map.getZoom();
+    const b = (anim ? boundsAt(map, anim.center, anim.zoom) : map.getBounds()).pad(pad);
     const next = new Map();
     for (let i = 0; i < items.length && next.size < max; i++) {
       const it = items[i];
@@ -66,15 +91,30 @@ export function viewportMarkers(map, items, { pos, want, make, key = (it, z, i) 
       if (!m) { m = make(it, z); cache.set(k, m); }
       next.set(k, m);
     }
+    if (anim) {
+      // Zoom animation starting: add what the new view needs now and fly it in with the map
+      // (old markers stay until the zoom ends), so nothing pops in afterwards.
+      const added = [];
+      for (const [k, m] of next) if (!shown.has(k)) { group.addLayer(m); added.push(m); shown.set(k, m); }
+      if (added.length) { void map.getPane("markerPane").offsetWidth; added.forEach(m => m._animateZoom?.(anim)); }
+      return;
+    }
     for (const [k, m] of shown) if (!next.has(k)) group.removeLayer(m);
     for (const [k, m] of next) if (!shown.has(k)) group.addLayer(m);
     shown = next;
   };
-  const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
-  group.on("add", () => { map.on("moveend", schedule); schedule(); });
-  group.on("remove", () => { map.off("moveend", schedule); group.clearLayers(); shown = new Map(); });
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(() => update()); };
+  const onAnim = e => { if (!e.noUpdate) update(e); };
+  group.on("add", () => { map.on("moveend livemove", schedule); map.on("zoomanim", onAnim); schedule(); });
+  group.on("remove", () => { map.off("moveend livemove", schedule); map.off("zoomanim", onAnim); group.clearLayers(); shown = new Map(); });
   group.refresh = () => { for (const m of shown.values()) group.removeLayer(m); shown = new Map(); cache.clear(); schedule(); };
   return group;
+}
+
+/** Lat/lon bounds of the view the map will have at center/zoom. */
+function boundsAt(map, center, zoom) {
+  const pb = map.getPixelBounds(center, zoom);
+  return L.latLngBounds(map.unproject(pb.getBottomLeft(), zoom), map.unproject(pb.getTopRight(), zoom));
 }
 
 /** Vector land / border layer (Natural Earth via world-atlas). */
@@ -220,13 +260,14 @@ export function airwayLabels(flight) {
 
 /** RainViewer radar composite. Returns { layer, frames, setFrame(i) }. */
 export async function radar(map, { opacity = 0.65 } = {}) {
-  const meta = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
+  const meta = await (await fetch("https://api.rainviewer.com/public/weather-maps.json", { signal: AbortSignal.timeout(12e3) })).json();
   const frames = [...(meta.radar?.past || []), ...(meta.radar?.nowcast || [])].map(f => ({ ...f, nowcast: (meta.radar?.nowcast || []).includes(f) }));
   const layers = new Map();
   const group = L.layerGroup();
   let idx = (meta.radar?.past?.length || 1) - 1;
   const layerFor = i => {
     const f = frames[i];
+    // Radar tiles load only after a pan ends: RainViewer answers 429 when they stream in during drags.
     if (!layers.has(f.path)) layers.set(f.path, L.tileLayer(`${meta.host}${f.path}/256/{z}/{x}/{y}/4/1_1.png`, { opacity, maxNativeZoom: 7, maxZoom: 14, zIndex: 400, updateWhenZooming: false, keepBuffer: 1, attribution: "Radar © RainViewer" }));
     return layers.get(f.path);
   };
@@ -246,12 +287,15 @@ export async function radar(map, { opacity = 0.65 } = {}) {
 }
 
 /** SIGMET polygons (when a source is available). */
-export async function sigmetLayer({ fd = true } = {}) {
-  const list = await sigmets();
+export async function sigmetLayer({ fd = true, hazard = null, color = "#b52a3a" } = {}) {
+  const all = await sigmets();
   const g = L.layerGroup();
-  if (!list) { g.unavailable = true; return g; }
+  if (!all) { g.unavailable = true; return g; }
+  const list = hazard ? all.filter(s => hazard.test(s.hazard || "")) : all;
+  g.issued = Math.max(0, ...list.map(s => s.from || 0)) || null;
   for (const s of list) {
-    const poly = L.polygon(unwrap(s.coords), { color: "#b52a3a", weight: 1.4, fillColor: "#c8394b", fillOpacity: 0.32 });
+    const poly = L.polygon(unwrap(s.coords), { color, weight: 1.4, fillColor: color, fillOpacity: 0.3 });
+    if (!poly.getBounds().isValid()) continue; // a few SIGMETs come with unusable coordinates
     poly.bindPopup(`<b>${esc(s.fir)} ${esc(s.qualifier || "")} ${esc(s.hazard)}</b><br>${s.base ? `FL${Math.round(s.base / 100)}–` : "SFC–"}FL${Math.round((s.top || 0) / 100)}<pre>${esc(s.raw)}</pre>`, { maxWidth: 380, className: "sig-pop" });
     g.addLayer(poly);
     if (fd && s.top) {
@@ -277,16 +321,18 @@ export async function vatsimAtc(firs) {
     const f = byPrefix.get(prefix) || [...byPrefix.values()].find(x => x.icao === prefix);
     if (!f || !pos.get(f.boundary)) continue;
     const k = f.boundary;
-    if (!grouped.has(k)) grouped.set(k, { f, freqs: [] });
+    if (!grouped.has(k)) grouped.set(k, { f, freqs: [], calls: [] });
     grouped.get(k).freqs.push(c.frequency);
+    grouped.get(k).calls.push(c.callsign);
   }
   for (const [k, { f, freqs }] of grouped) {
     g.addLayer(L.marker(pos.get(k), {
       interactive: false,
-      icon: L.divIcon({ className: "atc-box", html: `<div>${esc(f.name.toUpperCase())}</div><div>${freqs.join(",")}</div>`, iconSize: null }),
+      icon: L.divIcon({ className: "atc-co", html: `<i></i><div><b>${esc(f.name.toUpperCase())}${/control|radar|center|centre/i.test(f.name) ? "" : " CONTROL"}</b><span>${esc(f.icao || "")}</span><em>${[...new Set(freqs)].join(", ")}</em></div>`, iconSize: [0, 0] }),
     }));
   }
   g.count = grouped.size;
+  g.list = [...grouped].map(([k, { f, freqs, calls }]) => ({ name: f.name, icao: f.icao, freqs: [...new Set(freqs)], calls, pos: pos.get(k) }));
   return g;
 }
 
@@ -300,18 +346,48 @@ export function ownship(map, { color = "#ffffff", outline = "#111", size = 34, t
   const marker = L.marker([0, 0], { icon: icon(), interactive: false, zIndexOffset: 2000, keyboard: false });
   const trail = L.polyline([], { color: trailColor, weight: 2.5, opacity: .7, dashArray: "2 5", interactive: false });
   let shown = false, last = null;
+  // The sim sends a few positions a second; glide between them every frame instead of jumping.
+  let from = null, to = null, t0 = 0, dur = 0, lastAt = 0, rotNow = 0, rotFrom = 0, rotTo = 0, raf = 0, endAt = 0;
+  const turn = (a, b, k) => a + ((((b - a) % 360) + 540) % 360 - 180) * k;
+  const follow = p => {
+    if (map._animatingZoom || map.dragging?.moving?.()) return;
+    const off = map.latLngToContainerPoint(p).subtract(map.getSize().divideBy(2));
+    if (Math.abs(off.x) < 0.25 && Math.abs(off.y) < 0.25) return;
+    if (Math.abs(off.x) > 600 || Math.abs(off.y) > 600) { map.setView(p, map.getZoom(), { animate: false }); return; }
+    map._rawPanBy(off); // same as panBy({ animate: false }) but without a moveend every frame
+    map.fire("move");
+    if (performance.now() - endAt > 900) { endAt = performance.now(); map.fire("moveend"); }
+  };
+  const frame = () => {
+    raf = 0;
+    if (!shown || !to) return;
+    const k = dur ? Math.min(1, (performance.now() - t0) / dur) : 1;
+    const p = L.latLng(from.lat + (to.lat - from.lat) * k, from.lng + (to.lng - from.lng) * k);
+    marker.setLatLng(p);
+    rotNow = turn(rotFrom, rotTo, k);
+    const el = marker.getElement()?.querySelector("svg");
+    if (el) el.style.transform = `rotate(${rotNow}deg)`;
+    if (ctl.follow) follow(p);
+    if (k < 1) raf = requestAnimationFrame(frame);
+    else if (ctl.follow) map.fire("moveend");
+  };
   const ctl = {
     follow: false,
     update(s) {
-      if (!s?.connected || s.lat == null) { if (shown) { marker.remove(); trail.remove(); shown = false; } return; }
+      if (!s?.connected || s.lat == null) { if (shown) { marker.remove(); trail.remove(); shown = false; to = null; } return; }
       const p = L.latLng(s.lat, s.lon);
-      marker.setLatLng(p);
       const rot = (s.onGround ? s.hdg : s.trk ?? s.hdg) ?? 0;
-      const el = marker.getElement()?.querySelector("svg");
-      if (el) el.style.transform = `rotate(${rot}deg)`;
+      const now = performance.now();
+      const cur = shown && to ? marker.getLatLng() : p;
+      // Interpolate over the real update interval; jump on slews, teleports and the date line.
+      const jump = !shown || Math.abs(p.lng - cur.lng) > 180 || map.distance(cur, p) > 20000;
+      dur = jump || !lastAt ? 0 : Math.min(1200, Math.max(80, now - lastAt));
+      lastAt = now; t0 = now;
+      from = jump ? p : cur; to = p;
+      rotFrom = jump ? rot : rotNow; rotTo = rot;
       if (!last || map.distance(last, p) > (s.onGround ? 8 : 400)) { trail.addLatLng(p); last = p; if (trail.getLatLngs().length > 4000) trail.setLatLngs(trail.getLatLngs().slice(-3000)); }
-      if (!shown) { trail.addTo(map); marker.addTo(map); shown = true; const e2 = marker.getElement()?.querySelector("svg"); if (e2) e2.style.transform = `rotate(${rot}deg)`; }
-      if (ctl.follow) map.panTo(p, { animate: true, duration: 0.25, noMoveStart: true });
+      if (!shown) { marker.setLatLng(p); trail.addTo(map); marker.addTo(map); shown = true; }
+      if (!raf) raf = requestAnimationFrame(frame);
     },
     get latlng() { return shown ? marker.getLatLng() : null; },
     clearTrail() { trail.setLatLngs([]); last = null; },
@@ -337,32 +413,149 @@ export function basemap(map, style = "charts") {
   const layers = [];
   let land = null;
   if (style === "fd") {
-    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, updateWhenZooming: false, keepBuffer: 3, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
-    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, updateWhenZooming: false, keepBuffer: 3, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
+    layers.push(L.tileLayer(ESRI("World_Physical_Map"), { pane: "base", maxNativeZoom: 8, maxZoom: 8.99, updateWhenZooming: false, updateWhenIdle: false, keepBuffer: 3, className: "bm-physical", attribution: "Terrain © Esri, US NPS" }));
+    layers.push(L.tileLayer(ESRI("World_Topo_Map"), { pane: "base", minZoom: 9, maxNativeZoom: 19, maxZoom: 20, updateWhenZooming: false, updateWhenIdle: false, keepBuffer: 3, className: "bm-fd-hi", attribution: "© Esri, HERE, Garmin, OpenStreetMap contributors" }));
   } else {
-    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, updateWhenZooming: false, keepBuffer: 3, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
+    layers.push(L.tileLayer(ESRI("Canvas/World_Light_Gray_Base"), { pane: "base", minZoom: LAND_MAX, maxNativeZoom: 16, maxZoom: 20, updateWhenZooming: false, updateWhenIdle: false, keepBuffer: 3, className: "bm-charts", attribution: "© Esri, HERE, Garmin" }));
     // Charts+ look when zoomed out: flat cream land on grey-blue sea.
     addLand(map, { land: "#f3eed9", borders: "#9a9a9a" }).then(l => {
       land = l;
+      paint();
       const vis = () => { const p = map.getPane("land"); if (p) p.style.display = map.getZoom() < LAND_MAX ? "" : "none"; };
       map.on("zoomend", vis); vis();
     }).catch(() => {});
   }
-  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, updateWhenZooming: false, className: "bm-labels" });
+  const labels = L.tileLayer(ESRI("Canvas/World_Light_Gray_Reference"), { pane: "labels", minZoom: 7, maxNativeZoom: 16, maxZoom: 20, opacity: 0.85, updateWhenZooming: false, updateWhenIdle: false, className: "bm-labels" });
   const group = L.layerGroup(layers).addTo(map);
+  let night = false;
+  const paint = () => land?.eachLayer(l => l.setStyle(l.options.style?.fill === false
+    ? { color: night ? "#5d6470" : "#9a9a9a" } : { fillColor: night ? "#3a3d43" : "#f3eed9" }));
   return {
     group, labels,
+    // Charts+ night: dark grey land on a deep blue sea (sea colour comes from the container CSS).
+    setTheme(n) { night = n; paint(); },
     setLabels(on) { on ? labels.addTo(map) : labels.remove(); },
     remove() { group.remove(); labels.remove(); land?.remove(); },
   };
 }
 
-/** Navigraph enroute chart tiles (needs a Navigraph client with the "tiles" scope and a signed-in user). */
-export async function navigraphTiles(map, source = "IFR HIGH", theme = "DAY") {
-  const NG = await import("./navigraph.js");
-  const n = await NG.navigraph();
-  if (!n || !n.auth.getUser()) throw new Error("Sign in to Navigraph first (Settings › Navigraph)");
-  const { NavigraphTileLayer } = await import("https://cdn.jsdelivr.net/npm/@navigraph/leaflet@2.2.1/+esm");
-  const layer = new NavigraphTileLayer(n.auth, { type: "Navigraph", source, theme }, { pane: "base" });
-  return layer;
+/** Lat/lon grid with edge labels ("119E", "05S"), spacing by zoom, as on enroute charts. */
+export function graticule(map) {
+  const g = L.layerGroup();
+  const lab = (t, cls) => L.divIcon({ className: "grat-lbl " + cls, html: t, iconSize: null });
+  const draw = () => {
+    if (!map.hasLayer(g)) return;
+    g.clearLayers();
+    const v = map.getBounds(), span = v.getEast() - v.getWest(), b = v.pad(0.5); // padded so lines don't end mid-drag
+    const step = [1, 2, 5, 10, 15, 30].find(x => span / x <= 8) || 30;
+    const s = Math.max(-85, b.getSouth()), n = Math.min(85, b.getNorth());
+    const style = { color: "#3fb6c8", weight: 0.9, opacity: 0.8, interactive: false };
+    for (let lo = Math.ceil(b.getWest() / step) * step; lo <= b.getEast(); lo += step) {
+      g.addLayer(L.polyline([[s, lo], [n, lo]], style));
+      const w = ((lo + 540) % 360) - 180;
+      g.addLayer(L.marker([Math.min(85, v.getNorth()), lo], { interactive: false, keyboard: false, icon: lab(`${Math.abs(w)}${w < 0 ? "W" : "E"}`, "top") }));
+    }
+    for (let la = Math.ceil(s / step) * step; la <= n; la += step) {
+      g.addLayer(L.polyline([[la, b.getWest()], [la, b.getEast()]], style));
+      g.addLayer(L.marker([la, v.getEast()], { interactive: false, keyboard: false, icon: lab(`${String(Math.abs(la)).padStart(2, "0")}${la < 0 ? "S" : "N"}`, "right") }));
+    }
+  };
+  map.on("moveend", draw);
+  g.on("add", draw);
+  return g;
+}
+
+/** True when the view changed enough since the last call to be worth reloading area data. */
+function viewChanged(map, st) {
+  const c = map.getCenter(), z = map.getZoom(), sz = map.getSize();
+  const px = st.c ? map.latLngToContainerPoint(st.c).distanceTo(sz.divideBy(2)) : Infinity;
+  if (st.z === z && px < Math.min(sz.x, sz.y) * 0.2) return false;
+  st.c = c; st.z = z;
+  return true;
+}
+
+/** Surface conditions: METAR flight-category dots for the airports in view. */
+export function surfaceLayer(map) {
+  const g = L.layerGroup();
+  let busy = false;
+  const st = {};
+  map.on("moveend", () => viewChanged(map, st) && g.refresh());
+  g.refresh = async () => {
+    if (busy || !map.hasLayer(g) || map.getZoom() < 4) { if (map.getZoom() < 4) g.clearLayers(); return; }
+    busy = true;
+    const b = map.getBounds().pad(0.1);
+    const list = await metarsBox(Math.max(-90, b.getSouth()), Math.max(-180, b.getWest()), Math.min(90, b.getNorth()), Math.min(180, b.getEast())).catch(() => null);
+    busy = false;
+    g.unavailable = !list;
+    if (!list) return;
+    g.clearLayers();
+    g.issued = Math.max(0, ...list.map(m => m.t || 0)) || null;
+    for (const m of list) {
+      if (!CAT_COLOR[m.cat]) continue;
+      g.addLayer(L.circleMarker([m.lat, m.lon], { radius: 5, weight: 1.2, color: "#fff", fillColor: CAT_COLOR[m.cat], fillOpacity: 1 })
+        .bindPopup(`<b>${esc(m.icao)} · ${esc(m.cat)}</b><pre>${esc(m.raw || "")}</pre>`, { maxWidth: 360, className: "sig-pop" }));
+    }
+    g.count = list.length;
+  };
+  g.on("add", g.refresh);
+  return g;
+}
+
+/** Standard wind barb (knots), staff pointing into the wind. */
+export function windBarb(spd, dir, color = "#1a1a1a") {
+  let s = Math.round(spd / 5) * 5, y = 2, parts = "";
+  if (s < 5) return `<svg viewBox="-20 -20 40 40" width="40" height="40"><circle r="4" fill="none" stroke="${color}" stroke-width="1.6"/></svg>`;
+  for (; s >= 50; s -= 50, y += 7) parts += `<path d="M0 ${y} L12 ${y + 3} L0 ${y + 6}Z" fill="${color}"/>`;
+  for (; s >= 10; s -= 10, y += 4) parts += `<path d="M0 ${y} L12 ${y - 4}" />`;
+  if (s >= 5) parts += `<path d="M0 ${y === 2 ? y + 4 : y} L6 ${(y === 2 ? y + 4 : y) - 2}" />`;
+  return `<svg viewBox="-20 -20 40 40" width="40" height="40"><g transform="rotate(${dir}) translate(0 -18)" stroke="${color}" stroke-width="1.6" fill="none"><path d="M0 0 V18" />${parts}</g></svg>`;
+}
+
+/** Winds & temperatures aloft at one flight level, sampled on a grid over the view. */
+export function windsLayer(map) {
+  const g = L.layerGroup();
+  let seq = 0;
+  g.level = 340;
+  const HPA = [[50, 850], [100, 700], [180, 500], [240, 400], [300, 300], [340, 250], [390, 200], [450, 150]];
+  g.levels = HPA.map(x => x[0]);
+  // Barbs sit on a fixed lat/lon grid (spacing by zoom) with cached values, so they stay
+  // anchored while you pan or zoom and only cells new to the view are fetched.
+  const data = new Map(), shown = new Map();
+  const r2 = v => Math.round(v * 100) / 100;
+  g.refresh = async () => {
+    if (!map.hasLayer(g)) return;
+    const my = ++seq, hpa = HPA.find(x => x[0] === g.level)?.[1] || 250;
+    const b = map.getBounds(), span = b.getEast() - b.getWest();
+    const step = [0.5, 1, 2, 3, 5, 10, 15, 20, 30].find(x => span / x <= 9) || 30;
+    const pts = [];
+    for (let la = Math.ceil(b.getSouth() / step) * step; la <= b.getNorth() && pts.length < 150; la += step)
+      for (let lo = Math.ceil(b.getWest() / step) * step; lo <= b.getEast() && pts.length < 150; lo += step)
+        if (Math.abs(la) <= 85) pts.push([r2(la), r2(lo)]);
+    const hour = new Date().toISOString().slice(0, 13);
+    const key = p => `${hpa}|${hour}|${p[0]}|${r2(((p[1] + 540) % 360) - 180)}`;
+    const need = pts.filter(p => !data.has(key(p)));
+    if (need.length) {
+      try {
+        const res = await windsAloft(need.map(([la, lo]) => [la, ((lo + 540) % 360) - 180]), hpa);
+        res.forEach((r, i) => data.set(key(need[i]), r));
+        g.unavailable = false;
+      } catch { g.unavailable = true; }
+      if (my !== seq) return;
+    }
+    const want = new Map();
+    for (const p of pts) { const r = data.get(key(p)); if (r?.spd != null) want.set(`${key(p)}|${p[1]}`, [p, r]); }
+    for (const [k, m] of shown) if (!want.has(k)) { g.removeLayer(m); shown.delete(k); }
+    for (const [k, [p, r]] of want) {
+      if (shown.has(k)) continue;
+      const m = L.marker(p, { interactive: false, keyboard: false, icon: L.divIcon({ className: "wind-barb", iconSize: [40, 40], iconAnchor: [20, 20],
+        html: `${windBarb(r.spd, r.dir)}<span>${r.temp > 0 ? "+" : ""}${Math.round(r.temp)}</span>` }) });
+      g.addLayer(m); shown.set(k, m);
+    }
+    g.issued = want.values().next().value?.[1].t || g.issued;
+    if (data.size > 4000) data.clear(); // shortcut: crude cap; hourly keys age out anyway
+  };
+  let t;
+  map.on("moveend", () => { clearTimeout(t); t = setTimeout(g.refresh, 250); });
+  g.on("add", g.refresh);
+  return g;
 }

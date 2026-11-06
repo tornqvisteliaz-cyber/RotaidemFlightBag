@@ -131,7 +131,8 @@ export function panZoom(viewport, content, { min = 0.2, max = 8, onChange } = {}
   let s = 1, x = 0, y = 0;
   const pts = new Map();
   let last = null;
-  const apply = () => {
+  const apply = (smooth = false) => {
+    content.style.transition = smooth ? "transform .3s linear" : "";
     content.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
     onChange?.({ s, x, y });
   };
@@ -182,6 +183,8 @@ export function panZoom(viewport, content, { min = 0.2, max = 8, onChange } = {}
       apply();
     },
     zoom(f) { zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, f); },
+    /** Keep content point (px, py) in the middle of the viewport, gliding between updates. */
+    centerOn(px, py) { x = viewport.clientWidth / 2 - px * s; y = viewport.clientHeight / 2 - py * s; apply(true); },
     get state() { return { s, x, y }; },
   };
 }

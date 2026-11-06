@@ -7,6 +7,7 @@ $type = $_GET['type'] ?? '';
 if (!isset($types[$type])) { http_response_code(400); echo '[]'; exit; }
 $q = ['format' => 'json'];
 if (!empty($_GET['ids'])) $q['ids'] = preg_replace('/[^A-Z0-9,]/', '', strtoupper($_GET['ids']));
+if (!empty($_GET['bbox'])) $q['bbox'] = preg_replace('/[^0-9.,-]/', '', $_GET['bbox']);
 $url = 'https://aviationweather.gov/api/data/' . $types[$type] . '?' . http_build_query($q);
 $cache = sys_get_temp_dir() . '/rfb_wx_' . md5($url) . '.json';
 if (is_file($cache) && time() - filemtime($cache) < 300) { readfile($cache); exit; }

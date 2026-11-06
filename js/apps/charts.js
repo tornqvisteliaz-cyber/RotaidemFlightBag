@@ -1,5 +1,5 @@
 // Charts – modelled on a airline EFB chart viewer: an ENR map view and an
-// aerodrome chart view, with Navigraph (Jeppesen) charts, imported PDF charts
+// aerodrome chart view, with Lido charts from MSFS 2024, imported PDF charts
 // and generated airport pages.
 /* global L */
 import { $, $$, html, esc, on, listen, toast, popover, closePopovers, panZoom, modal, loadScript } from "../core/ui.js";
@@ -9,11 +9,11 @@ import { getFlight, fetchSimbrief } from "../core/flight.js";
 import { getAirport, searchAirports } from "../core/airports.js";
 import { distNM } from "../core/geo.js";
 import { metar, decodeMetar } from "../core/wx.js";
-import * as NG from "../core/navigraph.js";
 import { airportDiagram, airportInfo, PAGE_W, PAGE_H } from "../core/genchart.js";
 import * as M from "../core/map.js";
 import { fetchGround, groundLayer } from "../core/amm.js";
 import { simState, onSim } from "../core/sim.js";
+import { chartOwnship } from "../core/ownchart.js";
 import { lidoStatus, lidoIndex, lidoPageImages } from "../core/lido.js";
 
 const CATS = ["GEN", "SID", "STAR", "APPR", "TAXI"];
@@ -33,13 +33,12 @@ class ChartsApp {
     this.chart = null;        // displayed chart
     this.rot = 0;
     this.night = settings().chartTheme === "night";
-    this.layers = { lbl: true, ...kv.get("charts.layers", { ad: true, nav: true, fir: true, awy: true, wpt: true, wx: false, sig: false }) };
+    this.layers = { lbl: true, grid: true, ...kv.get("charts.layers", { ad: true, nav: true, fir: true, awy: true, wpt: true, wx: false, sig: false }) };
     this.enr = { airspace: "HIGH", com: false, era: false };
     this.render();
     this.unsub = [
       listen("flight", () => { this.renderTop(); this.refreshRoute(); }),
-      listen("navigraph", () => { if (this.icao) this.loadAirport(this.icao, this.role, true); this.renderTop(); }),
-      onSim(st => { this.own?.update(st); this.ammOwn?.update(st); }),
+      onSim(st => { this.own?.update(st); this.ammOwn?.update(st); this.moveOnChart(st); }),
     ];
     if (args) this.show(args);
   }
@@ -54,8 +53,8 @@ class ChartsApp {
           <button class="c-sq" data-act="search" title="Search airport">${UI.search}</button>
           <div class="c-layers">
             <button class="c-sq" data-act="sliders" title="Map options">${UI.sliders}</button>
-            ${[["ad", "AD"], ["nav", "NAVAID"], ["fir", "FIR"], ["awy", "AWY HI"], ["wpt", "WPT"], ["lbl", "LABELS"], ["wx", "WX"], ["sig", "SIGMET"]]
-              .map(([k, l]) => `<button class="c-layer ${this.layers[k] ? "on" : ""}" data-layer="${k}">${l}</button>`).join("")}
+            ${[["ad", "AD"], ["com", "COM<br>Area"], ["fir", "FIR"], ["grid", "GRID"], ["awy", "AWY HI"], ["wpt", "WPT"], ["nav", "NAVAID"], ["wx", "WX"], ["sig", "SIGMET"]]
+              .map(([k, l]) => `<button class="c-layer ${(k === "com" ? this.enr.com : this.layers[k]) ? "on" : ""}" data-layer="${k}">${l}</button>`).join("")}
           </div>
         </div>
         <div class="ad-only col">
@@ -68,6 +67,7 @@ class ChartsApp {
       </div>
       <div class="c-main">
         <div class="c-map enr-only"></div>
+        <div class="c-com enr-only hidden"></div>
         <div class="c-map-ui enr-only">
           <div class="c-north">${UI.north}<b>N</b></div>
           <div class="c-scalebar"><div class="bar"></div><div class="lbls"><span>0</span><span class="mid"></span><span class="end"></span></div></div>
@@ -86,6 +86,7 @@ class ChartsApp {
             <button data-act="night" title="Day / night">${UI.moon}</button>
             <button data-act="rotate" title="Rotate">${UI.rotate}</button>
             <button data-act="fit" title="Fit page">${UI.fit}</button>
+            <button data-act="ownc" class="c-ownc hidden" title="Centre on aircraft"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M20.5 3.5 L3.5 10.6 L11 12.9 L13.3 20.5Z" fill="currentColor"/></svg></button>
           </div>
         </div>
       </div>
@@ -94,10 +95,12 @@ class ChartsApp {
         <div class="ad-only col c-rcol"></div>
         <button class="c-menu" data-act="menu"><span>MENU</span>${UI.menuPlane}</button>
       </div>
-      <div class="c-splash"><div class="logo"><span class="box">ROTAIDEM</span><span class="name">Charts</span></div><div class="sub">POWERED BY NAVIGRAPH · JEPPESEN CHARTS</div></div>
+      <div class="c-splash"><div class="logo"><span class="box">ROTAIDEM</span><span class="name">Charts</span></div><div class="sub">LIDO · GENERATED · YOUR OWN CHARTS</div></div>
     </div>`;
     this.el = $(".charts", this.root);
     this.pz = panZoom($(".c-viewer", this.el), $(".c-page", this.el), { min: 0.15, max: 10 });
+    // Moving the chart by hand stops "centre on aircraft", like on the real EFB.
+    $(".c-viewer", this.el).addEventListener("pointerdown", e => { if (this.ownCentre && !e.target.closest(".c-tools")) { this.ownCentre = false; $(".c-ownc", this.el).classList.remove("on"); } });
     this.bind();
     this.renderTop();
     this.renderRight();
@@ -156,7 +159,7 @@ class ChartsApp {
         <button class="c-tab apt" data-act="airports"><b class="mag">${esc(this.icao || "-")}</b><b class="mag sm">${esc(this.ap?.iata || "")}</b><span>${esc(this.role === "OTHER" ? "AD" : this.role || "")}</span></button>
         ${ch ? `<button class="c-tab chart" data-cat="${ch.cat}"><b>${esc(CAT_NAMES[ch.cat])}</b><span>[${esc(ch.index || "—")}]</span></button>` : ""}
         <div class="c-title">${ch ? esc(ch.title || ch.name) : this.icao ? `<span class="dim">${esc(this.ap?.name || "")}</span>` : ""}</div>
-        ${ch?.source === "navigraph" ? `<div class="c-src">Navigraph · Jeppesen</div>` : ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch?.source === "lido" ? `<div class="c-src">Lido · MSFS 2024</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
+        ${ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch?.source === "lido" ? `<div class="c-src">Lido · MSFS 2024</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
     }
   }
 
@@ -203,9 +206,16 @@ class ChartsApp {
       case "airports": return this.airportsPop(b);
       case "docs": return this.docsPanel(b);
       case "adinfo": return this.autoSelect("GEN", true, "10-1P");
-      case "night": this.night = !this.night; setSetting("chartTheme", this.night ? "night" : "day"); this.el.classList.toggle("night", this.night); this.ammLayer?.setTheme(this.night ? "night" : "day"); if (this.chart && this.chart.source !== "amm") this.display(this.chart, true); return;
+      case "night": this.night = !this.night; setSetting("chartTheme", this.night ? "night" : "day"); this.el.classList.toggle("night", this.night); this.bm?.setTheme(this.night); this.ammLayer?.setTheme(this.night ? "night" : "day"); if (this.chart && this.chart.source !== "amm") this.display(this.chart, true); return;
       case "rotate": this.rot = (this.rot + 90) % 360; if (this.chart) this.display(this.chart, true); return;
-      case "fit": return this.fit();
+      case "fit": this.ownCentre = false; $(".c-ownc", this.el).classList.remove("on"); return this.fit();
+      case "ownc": {
+        if (!simState().connected) return toast(simState().status || "No aircraft connected");
+        this.ownCentre = !this.ownCentre;
+        $(".c-ownc", this.el).classList.toggle("on", this.ownCentre);
+        if (this.ownCentre && this.pz.state.s < 1.5) this.pz.zoom(2.5 / this.pz.state.s);
+        return this.moveOnChart(simState());
+      }
       case "bookmark": return this.bookmark();
       case "user": return this.userPop(b);
       case "sliders": return this.mapOptions(b);
@@ -213,7 +223,6 @@ class ChartsApp {
   }
 
   menu(anchor) {
-    const ng = NG.isConfigured();
     const p = popover(anchor, `<div class="c-pop menu">
       <button data-m="docs">Documents &amp; Bookmarks</button>
       <button data-m="enr">Enroute map (ENR)</button>
@@ -221,8 +230,6 @@ class ChartsApp {
       <button data-m="import">Import charts (PDF / image)…</button>
       <button data-m="night">${this.night ? "Day mode" : "Night mode"}</button>
       <button data-m="simbrief">Reload flight from SimBrief</button>
-      <button data-m="ngweb">Navigraph Charts${this.icao ? " – " + esc(this.icao) : ""}</button>
-      ${ng ? `<button data-m="ng">Navigraph developer account…</button>` : ""}
       <button data-m="home">Close Charts</button></div>`, { side: "left", width: 290 });
     on(p.el, "click", "[data-m]", async (e, b) => {
       closePopovers();
@@ -233,8 +240,6 @@ class ChartsApp {
       if (m === "import") this.importDialog();
       if (m === "night") this.act("night");
       if (m === "simbrief") fetchSimbrief().then(() => toast("Flight updated from SimBrief")).catch(err => toast(err.message));
-      if (m === "ng") this.ngAccount();
-      if (m === "ngweb") this.ctx.open("navcharts", { icao: this.icao });
       if (m === "home") this.ctx.home();
     });
   }
@@ -260,12 +265,6 @@ class ChartsApp {
       const local = await this.localCharts(icao);
       this.index.push(...local);
       this.setMode("ad");
-      try {
-        if (NG.isConfigured()) {
-          const ng = await NG.chartIndex(icao);
-          if (ng && this.icao === icao) this.index.push(...ng.map(c => ({ ...c, short: shortName(c.name) })));
-        }
-      } catch (e) { console.warn(e); toast("Navigraph: " + e.message); }
       // Lido charts from MSFS 2024 (via the in-sim Flight Bag Lido panel)
       lidoStatus().then(async st => {
         if (!st.bridge || this.icao !== icao) return;
@@ -292,7 +291,8 @@ class ChartsApp {
     const f = getFlight();
     return [
       { source: "amm", id: "amm-" + ap.icao, icao: ap.icao, cat: "TAXI", index: "AMM", name: "AIRPORT MOVING MAP", short: "AMM", procs: [], runways: [] },
-      { source: "gen", id: "gen-109-" + ap.icao, icao: ap.icao, cat: "TAXI", index: "10-9", name: "AIRPORT DIAGRAM", short: "10-9 AD", procs: [], runways: [] },
+      { source: "gen", id: "gen-109-" + ap.icao, icao: ap.icao, cat: "TAXI", index: "10-9", name: "AIRPORT DIAGRAM", short: "10-9 AD", procs: [], runways: [],
+        geo: ap.runways.some(r => r.len > 0) && ap.runways.filter(r => r.len > 0).every(r => r.leLat != null && r.heLat != null) },
       { source: "gen", id: "gen-101p-" + ap.icao, icao: ap.icao, cat: "GEN", index: "10-1P", name: "AIRPORT INFORMATION", short: "10-1P INFO", procs: [], runways: [] },
     ].map(c => ({ ...c, airac: f?.airac }));
   }
@@ -313,7 +313,7 @@ class ChartsApp {
     const rwy = this.role === "FROM" ? f?.orig?.rwy : this.role === "TO" ? f?.dest?.rwy : null;
     const proc = this.role === "FROM" ? f?.sid : this.role === "TO" ? f?.star : null;
     const pick = (proc && list.find(c => c.procs.some(p => p.startsWith(proc)) || c.name.includes(proc))) ||
-      (rwy && list.find(c => c.runways.includes(rwy))) || list.find(c => c.source === "navigraph" || c.source === "local") || list[0];
+      (rwy && list.find(c => c.runways.includes(rwy))) || list.find(c => c.source === "lido" || c.source === "local") || list[0];
     if (pick) this.display(pick);
     else if (display) this.chartList(cat, $(`[data-cat="${cat}"]`, this.el));
   }
@@ -331,17 +331,14 @@ class ChartsApp {
     const notams = cat === "GEN" ? this.airportNotams() : [];
     const list = this.index.filter(c => c.cat === cat);
     const rwys = [...new Set(list.flatMap(c => c.runways))].sort();
-    const ngNote = list.some(c => c.source === "navigraph") ? ""
-      : `<button class="c-ngbtn" data-ngweb><b>N</b><span>Open ${esc(this.icao)} ${CAT_NAMES[cat]} in Navigraph Charts<small>Sign in with your Navigraph account</small></span><em>›</em></button>`;
     const body = html(`<div class="c-pop list">
       <header><b>${esc(this.icao)}</b> · ${CAT_NAMES[cat]} <span class="dim">${list.length} chart${list.length === 1 ? "" : "s"}</span></header>
       ${rwys.length ? `<div class="chips"><button class="on" data-rw="">ALL</button>${rwys.map(r => `<button data-rw="${esc(r)}">${esc(r)}</button>`).join("")}</div>` : ""}
-      <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : c.source === "lido" ? `<span class="tag lido">LIDO</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
+      <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.geo ? `<span class="tag geo" title="Geo-referenced: shows your aircraft">✈</span>` : ""}${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : c.source === "lido" ? `<span class="tag lido">LIDO</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
       ${notams.length ? `<div class="c-notams"><h5>NOTAM <span>${notams.length}</span></h5>${notams.map(n => `<article><b>${esc(n.id || "")}</b><p>${esc(n.text)}</p></article>`).join("")}</div>` : ""}
-      ${ngNote}</div>`);
+      </div>`);
     const p = popover(anchor, body, { side: this.mode === "ad" && anchor.closest(".c-right") ? "left" : "bottom", width: 460 });
     on(p.el, "click", "[data-id]", (e, b) => { closePopovers(); this.display(this.index.find(c => c.id === b.dataset.id)); });
-    on(p.el, "click", "[data-ngweb]", () => { closePopovers(); this.ctx.open("navcharts", { icao: this.icao }); });
     on(p.el, "click", "[data-rw]", (e, b) => {
       $$("[data-rw]", p.el).forEach(x => x.classList.toggle("on", x === b));
       $$(".row", p.el).forEach(r => { r.style.display = !b.dataset.rw || r.dataset.rws.split(" ").includes(b.dataset.rw) ? "" : "none"; });
@@ -359,6 +356,8 @@ class ChartsApp {
     this.el.classList.toggle("amm-on", chart.source === "amm");
     if (chart.source === "amm") return this.showAmm(chart);
     const rot = $(".c-rot", this.el), empty = $(".c-empty", this.el);
+    this.chartOwn = null;
+    $(".c-ownc", this.el).classList.add("hidden");
     empty.innerHTML = `<div class="spinner"></div>`; empty.style.display = "grid";
     rot.classList.toggle("invert", false);
     let w = PAGE_W, h = PAGE_H;
@@ -367,11 +366,6 @@ class ChartsApp {
         const ap = await getAirport(chart.icao);
         rot.innerHTML = chart.index === "10-9" ? airportDiagram(ap, { airac: chart.airac }) : airportInfo(ap, { airac: chart.airac, metar: this.metarRaw || "" });
         rot.classList.toggle("invert", this.night);
-      } else if (chart.source === "navigraph") {
-        const url = await NG.chartImage(chart, this.night ? "dark" : "light");
-        const img = await loadImg(url);
-        rot.innerHTML = ""; rot.append(img);
-        w = img.naturalWidth; h = img.naturalHeight;
       } else if (chart.source === "local") {
         ({ w, h } = await renderFile(chart.rec, rot));
         rot.classList.toggle("invert", this.night);
@@ -387,6 +381,8 @@ class ChartsApp {
       }
       if (this.chart !== chart) return;
       empty.style.display = "none";
+      this.chartOwn = chartOwnship(rot.querySelector("svg"));
+      $(".c-ownc", this.el).classList.toggle("hidden", !this.chartOwn);
       const r = this.rot;
       const sw = r % 180 ? h : w, sh = r % 180 ? w : h;
       rot.style.width = w + "px"; rot.style.height = h + "px";
@@ -394,11 +390,19 @@ class ChartsApp {
       $(".c-page", this.el).style.width = sw + "px"; $(".c-page", this.el).style.height = sh + "px";
       this.pageSize = { w: sw, h: sh };
       if (!keepView || prevId !== chart.id) this.fit(); else if (keepView) this.fit();
+      this.moveOnChart(simState());
     } catch (e) {
       console.error(e);
       empty.innerHTML = `<div class="c-err">Could not display chart<br><small>${esc(e.message)}</small></div>`;
     }
   }
+  // Moving chart: own-ship on a geo-referenced chart, optionally kept centred (north-up page only).
+  moveOnChart(st) {
+    if (!this.chartOwn) return;
+    const p = this.chartOwn.update(st);
+    if (p && this.ownCentre && !this.rot) this.pz.centerOn(p.x, p.y);
+  }
+
   // ---------------------------------------------------------------- airport moving map
   async showAmm(chart) {
     const box = $(".c-amm-map", this.el), msg = $(".c-amm-msg", this.el);
@@ -582,7 +586,7 @@ class ChartsApp {
       title: "Charts guide", width: 600, body: `
       <p><b>ENR view</b> – the enroute map shows your SimBrief route, airports, navaids, FIR boundaries, radar and SIGMETs. Toggle layers on the left; SCALE, AIRSPACE, COM (live VATSIM frequencies), ERA (enroute alternates) on the right.</p>
       <p><b>FROM / TO / ALTN</b> – tap to open that aerodrome's charts. The right column groups charts into GEN, SID/STAR, APPR and TAXI. The selected chart name is shown in teal.</p>
-      <p><b>Jeppesen charts via Navigraph</b> – add your Navigraph developer client in Settings, then MENU › Navigraph account to sign in with your Navigraph account (Charts subscription required).</p>
+      <p><b>Lido charts</b> – with MSFS 2024 running and the Flight Bag Lido panel open in the sim toolbar, the sim's Lido SID, STAR, approach and airport charts appear here (LIDO tag).</p>
       <p><b>Own charts</b> – MENU › Import charts lets you add PDF or image charts per airport and category. They are stored on this device only.</p>
       <p><b>Generated pages</b> – 10-9 airport diagram and 10-1P airport information are drawn from open data for every airport. They are for simulation only.</p>
       <p><b>Viewer</b> – drag to pan, pinch / scroll to zoom, double-tap to zoom in. Paperclip adds the chart to USER.</p>` });
@@ -611,32 +615,6 @@ class ChartsApp {
     });
   }
 
-  async ngAccount() {
-    const user = await NG.currentUser().catch(() => null);
-    if (user) {
-      const m = modal({ title: "Navigraph", body: `<p>Signed in as <b>${esc(user.preferred_username)}</b>.</p><p class="dim">Subscriptions: ${esc((user.subscriptions || []).join(", ") || "none")}</p><button class="ios-btn secondary" data-out style="background:#e5e5ea;color:#d00">Sign out</button>` });
-      $("[data-out]", m.el).onclick = async () => { await NG.signOut(); m.close(); toast("Signed out of Navigraph"); };
-      return;
-    }
-    const m = modal({ title: "Sign in to Navigraph", done: "Cancel", body: `<div class="ng-flow"><div class="spinner dark"></div><p>Requesting a sign-in code…</p></div>` });
-    try {
-      const s = await NG.signIn(async p => {
-        let qr = "";
-        try {
-          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js");
-          const q = window.qrcode(0, "M"); q.addData(p.verification_uri_complete); q.make(); qr = q.createSvgTag({ cellSize: 4, margin: 2 });
-        } catch { /* QR optional */ }
-        $(".ng-flow", m.el).innerHTML = `${qr}<p>Scan the code, or open<br><a href="${esc(p.verification_uri_complete)}" target="_blank" rel="noopener">${esc(p.verification_uri)}</a><br>and enter</p><div class="ng-code">${esc(p.user_code)}</div><p class="dim">Waiting for confirmation…</p>`;
-      });
-      m.el.addEventListener("click", e => { if (e.target.closest("[data-x]")) s.cancel(); });
-      const u = await s.promise;
-      m.close();
-      toast(`Signed in as ${u.preferred_username}`);
-    } catch (e) {
-      $(".ng-flow", m.el).innerHTML = `<p style="color:#c00">${esc(e.message || "Sign-in failed")}</p>`;
-    }
-  }
-
   // ---------------------------------------------------------------- ENR map
   async initMap() {
     if (this.map) return;
@@ -648,10 +626,13 @@ class ChartsApp {
     this.map.on("dragstart", () => { if (this.own.follow) { this.own.follow = false; this.renderRight(); } });
     this.bm = M.basemap(this.map, "charts");
     this.bm.setLabels(this.layers.lbl !== false);
+    this.bm.setTheme(this.night);
+    this.map.on("moveend", () => this.renderCom());
     on(this.el, "click", "[data-z]", (e, b) => (b.dataset.z === "in" ? this.map.zoomIn(0.75) : this.map.zoomOut(0.75)));
     this.lyr = {};
     this.lyr.ad = await M.airportLayer(this.map, { highlight: this.flightAirports(), color: "#2b7d69" });
     this.lyr.nav = await M.navaidLayer(this.map, { ndb: this.enr.airspace === "LOW" });
+    this.lyr.grid = M.graticule(this.map);
     M.firLayer(this.map, "charts").then(l => { this.lyr.fir = l; this.applyLayers(); }).catch(() => {});
     this.refreshRoute();
     this.applyLayers();
@@ -672,6 +653,7 @@ class ChartsApp {
     this.applyLayers();
   }
   async toggleLayer(k, b) {
+    if (k === "com") return this.enrToggle("com");
     this.layers[k] = !this.layers[k];
     b.classList.toggle("on", this.layers[k]);
     kv.set("charts.layers", this.layers);
@@ -689,7 +671,7 @@ class ChartsApp {
   }
   applyLayers() {
     if (!this.map) return;
-    for (const k of ["ad", "nav", "fir", "awy", "wx", "sig"]) {
+    for (const k of ["ad", "nav", "fir", "awy", "wx", "sig", "grid"]) {
       const l = this.lyr[k];
       if (!l) continue;
       if (this.layers[k] && !this.map.hasLayer(l)) l.addTo(this.map);
@@ -697,6 +679,16 @@ class ChartsApp {
     }
     if (this.lyr.fir?.labels) this.layers.fir ? this.lyr.fir.labels.addTo(this.map) : this.lyr.fir.labels.remove();
     if (this.lyr.atc) this.enr.com ? this.lyr.atc.addTo(this.map) : this.lyr.atc.remove();
+    $('[data-layer="com"]', this.el)?.classList.toggle("on", this.enr.com);
+    this.renderCom();
+  }
+  // Charts+ "COM AREAS": the live (VATSIM) controllers whose areas are in view.
+  renderCom() {
+    const box = $(".c-com", this.el);
+    if (!box) return;
+    const list = this.enr.com && this.map ? (this.lyr.atc?.list || []).filter(c => c.pos && this.map.getBounds().pad(0.2).contains(c.pos)) : [];
+    box.classList.toggle("hidden", !this.enr.com);
+    box.innerHTML = `<header>COM AREAS</header>${list.length ? list.map(c => `<div class="nm">${esc(c.name)}${/control|radar|center|centre|info/i.test(c.name) ? "" : " CONTROL"}</div>${c.freqs.map((fq, i) => `<div class="fr"><b>${esc(fq)}</b><span>ONLINE</span><span>${esc(c.calls[i] || c.calls[0] || "")}</span></div>`).join("")}`).join("") : `<div class="fr none">No controllers online in view</div>`}`;
   }
   updateScale() {
     if (!this.map) return;
@@ -756,19 +748,12 @@ class ChartsApp {
       <button data-o="fit">Zoom to route</button>
       <button data-o="dep">Centre on departure</button>
       <button data-o="dest">Centre on destination</button>
-      ${NG.isConfigured() && settings().navigraphTiles ? ["IFR HIGH", "IFR LOW", "VFR", "WORLD"].map(s => `<button data-ng="${s}">Navigraph ${s}</button>`).join("") + `<button data-ng="">Standard map</button>` : ""}</div>`, { side: "right", width: 260 });
-    on(p.el, "click", "[data-ng]", async (e, b) => {
-      closePopovers();
-      this.ngLayer?.remove(); this.ngLayer = null;
-      if (b.dataset.ng) {
-        try { this.ngLayer = (await M.navigraphTiles(this.map, b.dataset.ng, this.night ? "NIGHT" : "DAY")).addTo(this.map); this.bm.group.remove(); }
-        catch (err) { toast(err.message); this.bm.group.addTo(this.map); }
-      } else this.bm.group.addTo(this.map);
-    });
+      <button data-o="lbl">${this.layers.lbl ? "Hide" : "Show"} place names</button></div>`, { side: "right", width: 260 });
     on(p.el, "click", "[data-o]", (e, b) => {
       closePopovers();
       const f = getFlight();
       if (b.dataset.o === "fit") this.enrToggle("pos");
+      if (b.dataset.o === "lbl") { this.layers.lbl = !this.layers.lbl; kv.set("charts.layers", this.layers); this.bm?.setLabels(this.layers.lbl); }
       const a = b.dataset.o === "dep" ? f?.orig : b.dataset.o === "dest" ? f?.dest : null;
       if (a) this.map.setView([a.lat, a.lon], 8);
     });

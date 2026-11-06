@@ -117,7 +117,7 @@ class BriefingApp {
       ${welcome ? `<div class="bf-hello">${I.plane}<h3>Plan with SimBrief</h3><p>Import your latest operational flight plan, or plan a new flight. Charts, OPT and the maps pick it up automatically.</p></div>` : ""}
       <section class="card import"><h4>Import from SimBrief</h4>
         <div class="row"><input id="bf-user" placeholder="SimBrief username or pilot ID" value="${esc(s.simbriefUser)}" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="ios-btn" data-act="import">Import Latest OFP</button></div>
-        <p class="hint">Your Navigraph/SimBrief username, or the numeric Pilot ID from SimBrief › Account Settings.</p></section>
+        <p class="hint">Your SimBrief username, or the numeric Pilot ID from SimBrief › Account Settings.</p></section>
       <section class="card"><h4>Plan a new flight</h4>
         <div class="grid">
           ${[["airline", "Airline", "ABC"], ["fltnum", "Flight", "123"], ["type", "Aircraft", "B738"], ["reg", "Registration", ""], ["orig", "From", "WSSS"], ["dest", "To", "VOCI"], ["altn", "Alternate", "VOTV"], ["dep", "Dep (UTC)", "1300"]]

@@ -5,7 +5,7 @@ import { APP_ICONS } from "./core/icons.js";
 import { settings, setSetting } from "./core/store.js";
 import { getFlight, fetchSimbrief } from "./core/flight.js";
 import { loadAirports, searchAirports } from "./core/airports.js";
-import { APPS, byId, layout, uninstall, moveApp } from "./core/registry.js";
+import { APPS, byId, layout, uninstall, moveApp, FOLDERS } from "./core/registry.js";
 import { WALLPAPERS } from "./core/wallpapers.js";
 import { widgetsHTML, updateWidgets, tickClock } from "./core/widgets.js";
 import { applyPairing, connectSheet, installHint, isStandalone, isIOS } from "./core/pair.js";
@@ -86,6 +86,11 @@ function setBar(style) {
 // ---- home screen ----------------------------------------------------------
 let editing = false;
 function iconHTML(id) {
+  if (id.startsWith("folder:")) {
+    const f = FOLDERS[id.slice(7)];
+    return `<div class="app-icon folder" data-folder="${id.slice(7)}"><div class="ic"><div class="fold-ic">${f.apps.map(x => `<span>${APP_ICONS[x] || ""}</span>`).join("")}</div></div>
+      <button class="rm" data-rm="${id}" aria-label="Remove ${esc(f.name)}">−</button><span class="name">${esc(f.name)}</span></div>`;
+  }
   const a = byId[id];
   if (!a) return "";
   return `<div class="app-icon" data-app="${id}">
@@ -113,10 +118,26 @@ const libraryIcon = () => {
 
 function renderWidgets() { updateWidgets(); }
 
+// An opened Home Screen folder: blurred background, rounded panel with the apps.
+function openFolder(fid) {
+  const f = FOLDERS[fid];
+  if (!f || $(".hs-folder")) return;
+  const el = html(`<div class="hs-folder"><div class="fbox"><h3>${esc(f.name)}</h3><div class="fgrid">${f.apps.map(id => `<button data-open="${id}"><span class="ic">${APP_ICONS[id] || ""}</span><span class="name">${esc(byId[id].name)}</span></button>`).join("")}</div></div></div>`);
+  $("#overlay-root").append(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  const close = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 200); };
+  el.addEventListener("click", e => {
+    const b = e.target.closest("[data-open]");
+    if (b) { el.remove(); openApp(b.dataset.open); return; }
+    if (!e.target.closest(".fbox")) close();
+  });
+}
+
 // App Library: every installed app, grouped by category (as on iPadOS).
 function appLibrary() {
   if ($(".applib")) return;
   const l = layout(), inst = new Set([...l.grid, ...l.dock]);
+  for (const [fid, f] of Object.entries(FOLDERS)) if (inst.has("folder:" + fid)) f.apps.forEach(x => inst.add(x));
   const cats = {};
   for (const a of APPS) if (inst.has(a.id)) (cats[a.category] ||= []).push(a);
   const lib = html(`<div class="applib"><div class="al-box">
@@ -154,6 +175,7 @@ on(home, "click", "[data-rm]", (e, b) => { e.stopPropagation(); confirmRemove(b.
 on(home, "click", "[data-done]", () => { editing = false; renderHome(); });
 on(home, "click", "[data-spot]", () => spotlight());
 on(home, "click", "[data-library]", e => { e.stopPropagation(); appLibrary(); });
+on(home, "click", "[data-folder]", (e, el) => { if (editing || e.target.closest("[data-rm]")) return; openFolder(el.dataset.folder); });
 on(home, "click", "[data-open-sim]", () => openApp("settings", { section: "sim" }));
 on(home, "click", "[data-app]", (e, el) => {
   if (longPressed) { longPressed = false; return; }
@@ -187,6 +209,7 @@ home.addEventListener("pointerdown", e => {
 
 function iconMenu(icon) {
   const id = icon.dataset.app, a = byId[id];
+  if (!a) { editing = true; renderHome(); return; } // folders: long press goes straight to Edit Home Screen
   const inDock = layout().dock.includes(id);
   const s = screen.getBoundingClientRect(), r = icon.getBoundingClientRect(), k = screenScale();
   const x = (r.left - s.left) / k, y = (r.top - s.top) / k;
@@ -211,7 +234,7 @@ function iconMenu(icon) {
 }
 
 function confirmRemove(id) {
-  const a = byId[id];
+  const a = byId[id] || { name: FOLDERS[id.slice(7)]?.name || id };
   const al = html(`<div class="alert-wrap"><div class="alert"><b>Remove “${esc(a.name)}”?</b><p>The app is removed from the Home Screen and closed. You can get it again from the App Store.</p>
     <button data-x="rm" class="red">Delete App</button><button data-x="cancel">Cancel</button></div></div>`);
   $("#overlay-root").append(al);

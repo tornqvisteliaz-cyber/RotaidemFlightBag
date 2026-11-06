@@ -50,11 +50,8 @@ export async function taf(icao) {
 export async function sigmets() {
   const hit = fresh("sig", 10 * 60e3);
   if (hit) return hit;
-  let j = null;
-  try {
-    const r = await fetch("https://aviationweather.gov/api/data/isigmet?format=json");
-    j = await r.json();
-  } catch { j = await proxy("isigmet", {}); }
+  // aviationweather.gov sends no CORS headers, so only the same-origin relay (serve.py / wx.php) works.
+  const j = await proxy("isigmet", {});
   if (!Array.isArray(j)) return null;
   const v = j.filter(s => Array.isArray(s.coords) && s.coords.length > 2).map(s => ({
     fir: s.firId, name: s.firName, hazard: s.hazard, qualifier: s.qualifier,
@@ -97,3 +94,27 @@ export function decodeMetar(raw) {
 }
 
 export const CAT_COLOR = { VFR: "#2fbf4a", MVFR: "#2f7cf6", IFR: "#e5383b", LIFR: "#c03cd1" };
+
+// ---- Area products for the Enroute weather layers -------------------------
+/** METARs inside a lat/lon box (aviationweather.gov, through the local relay when CORS blocks it). */
+export async function metarsBox(s, w, n, e) {
+  const bbox = [s, w, n, e].map(v => Math.round(v)).join(",");
+  const hit = fresh("mb" + bbox, 5 * 60e3);
+  if (hit) return hit;
+  const j = await proxy("metar", { bbox });
+  if (!Array.isArray(j)) return null;
+  const v = j.filter(m => m.lat != null).map(m => ({ icao: m.icaoId, lat: m.lat, lon: m.lon, cat: m.fltCat, raw: m.rawOb, wdir: m.wdir, wspd: m.wspd, temp: m.temp, t: m.obsTime * 1000 }));
+  cache.set("mb" + bbox, { t: Date.now(), v });
+  return v;
+}
+
+/** Forecast wind/temperature at one pressure level for a list of [lat, lon] points (Open-Meteo GFS/ICON). */
+export async function windsAloft(points, hpa) {
+  const q = new URLSearchParams({
+    latitude: points.map(p => p[0].toFixed(2)).join(","), longitude: points.map(p => p[1].toFixed(2)).join(","),
+    hourly: `wind_speed_${hpa}hPa,wind_direction_${hpa}hPa,temperature_${hpa}hPa`, wind_speed_unit: "kn", forecast_hours: 1, timezone: "GMT",
+  });
+  const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(12e3) })).json();
+  const arr = Array.isArray(j) ? j : [j];
+  return arr.map((r, i) => ({ lat: points[i][0], lon: points[i][1], spd: r.hourly?.[`wind_speed_${hpa}hPa`]?.[0], dir: r.hourly?.[`wind_direction_${hpa}hPa`]?.[0], temp: r.hourly?.[`temperature_${hpa}hPa`]?.[0], t: Date.parse(r.hourly?.time?.[0] + "Z") }));
+}

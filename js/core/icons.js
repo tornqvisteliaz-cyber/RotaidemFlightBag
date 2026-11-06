@@ -84,10 +84,27 @@ export const APP_ICONS = {
      <rect x="40" y="30" width="30" height="14" rx="2" fill="#f3e3c3"/>
      <path d="M47 60 L62 54 L56 66 L54 60Z" fill="#f3e3c3"/>`,
     grad("gL", "#f4d29c", "#d99b4c")),
-  navcharts: svg(
-    `<rect width="100" height="100" fill="url(#gn)"/>
-     <path d="M30 74 V26 h7 l26 34 V26 h7 v48 h-7 L37 40 v34z" fill="#fff"/>`,
-    grad("gn", "#123a6b", "#0b1f3a")),
+  vfrmap: svg(
+    `<rect width="100" height="100" fill="url(#gv)"/>
+     <path d="M0 64 C20 52 30 70 50 58 S80 40 100 50 V100 H0Z" fill="#8fbf6a" opacity=".85"/>
+     <path d="M0 78 C25 68 45 86 70 72 S92 66 100 70 V100 H0Z" fill="#6aa04a"/>
+     <circle cx="50" cy="50" r="24" fill="none" stroke="#fff" stroke-width="2.5" stroke-dasharray="4 4" opacity=".9"/>
+     <path d="M50 30 C51.4 30 52 31.4 52 33.2 V44 L66 52 V55 L52 51 V60 L56 63 V65.5 L50 64 L44 65.5 V63 L48 60 V51 L34 55 V52 L48 44 V33.2 C48 31.4 48.6 30 50 30Z" fill="#fff"/>`,
+    grad("gv", "#2f7fd6", "#1b4f99")),
+  wb: svg(
+    `<rect width="100" height="100" fill="url(#gw)"/>
+     <path d="M30 78 L38 24 H62 L70 78Z" fill="none" stroke="#1d1d1f" stroke-width="3.5" stroke-linejoin="round"/>
+     <circle cx="53" cy="54" r="6" fill="#ff3b30"/>
+     <path d="M26 84 H74" stroke="#1d1d1f" stroke-width="3.5" stroke-linecap="round"/>
+     <text x="50" y="18" font-family="Arial" font-weight="700" font-size="13" text-anchor="middle" fill="#1d1d1f">CG</text>`,
+    grad("gw", "#ffffff", "#e3e6ea")),
+  e6b: svg(
+    `<rect width="100" height="100" fill="url(#ge)"/>
+     <circle cx="50" cy="50" r="34" fill="#f5f0e1" stroke="#222" stroke-width="2"/>
+     <circle cx="50" cy="50" r="24" fill="none" stroke="#222" stroke-width="1.2"/>
+     ${Array.from({ length: 24 }, (_, i) => `<line x1="50" y1="17" x2="50" y2="${i % 2 ? 21 : 24}" stroke="#222" stroke-width="1.4" transform="rotate(${i * 15} 50 50)"/>`).join("")}
+     <path d="M50 50 L50 30" stroke="#d0021b" stroke-width="3" stroke-linecap="round"/><circle cx="50" cy="50" r="3.5" fill="#222"/>`,
+    grad("ge", "#4a4f57", "#25282d")),
   settings: svg(
     `<rect width="100" height="100" fill="url(#gg)"/>
      <g transform="translate(50 50)">
