@@ -136,3 +136,7 @@
 .fd-tools .tfc-btn small { font: 700 8px Arial, sans-serif; letter-spacing: .3px; margin-top: -2px; }
 .leaflet-popup.tfc-pop .leaflet-popup-content { font: 13px/1.4 Arial, sans-serif; margin: 8px 12px; }
 .tfc-labels .tfc.parked span { display: none; } /* parked aircraft: arrow only, tap for details */
+
+/* Enroute: airport moving map fades in over the enroute map as you zoom in (--gop set by groundFade) */
+.fd-map .leaflet-amm-area-pane, .fd-map .leaflet-amm-twy-pane, .fd-map .leaflet-amm-rwy-pane, .fd-map .leaflet-amm-lbl-pane { opacity: var(--gop, 1); transition: opacity .35s ease-out; }
+.map-zooming .leaflet-amm-lbl-pane { opacity: 0 !important; transition: none !important; }

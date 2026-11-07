@@ -31,7 +31,8 @@ export async function fetchGround(icao, lat, lon, radius = 4000) {
   let data = null, lastErr;
   for (const url of OVERPASS) {
     try {
-      const r = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      // Overpass can be slow under load (25 s+) and mirrors sometimes hang: give each one a deadline.
+      const r = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: AbortSignal.timeout(45e3) });
       if (!r.ok) throw new Error(`Overpass ${r.status}`);
       data = await r.json();
       break;

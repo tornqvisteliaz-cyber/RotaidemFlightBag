@@ -57,6 +57,12 @@ MSFS 2024 ships Lido charts, but the sim only exposes them to code running insid
 
 Charts are relayed in memory only and never saved to disk; they are for use with your own copy of MSFS 2024. This is experimental: the panel and the server relay are built from the SDK's documented chart API, but chart image export depends on the sim allowing its chart images to be read back.
 
+## ChartFox charts
+
+Charts can list and show ChartFox's free charts (SID, STAR, approach, airport) for every airport, tagged **CF**. ChartFox's API needs a token: sign in at chartfox.org with your VATSIM account, apply for API access at chartfox.org/developers/apply, then paste the token in **Settings › ChartFox** (Test checks it). The token is stored on the device and only sent to api.chartfox.org. Without a token, Charts › MENU › ChartFox opens the airport on chartfox.org. Some ChartFox charts link to national AIP sites that block loading inside other apps; those open in their own window.
+
+In Enroute the airport moving map is an overlay: it loads as you zoom towards an airport and fades in between zoom 12 and 13.
+
 ## Live traffic
 
 Tap **TFC** (Enroute tools, Charts ENR layers and airport moving map, VFR Map) to show pilots online on VATSIM as cyan arrows. Positions arrive every 15 s; taxiing aircraft glide to each new position (so they follow the real taxi route, up to 15 s behind) and airborne aircraft are projected ahead along their track. Moving aircraft are labelled with callsign, type, altitude and speed; tap any aircraft for its route. Sim AI traffic is not shown.

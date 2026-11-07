@@ -9,6 +9,7 @@ import { I } from "../core/sf.js";
 import { connectSheet, isStandalone, shareBase } from "../core/pair.js";
 import { simState, onSim, setDemo } from "../core/sim.js";
 import { detectAircraft } from "../core/aircraft.js";
+import { chartfoxToken, chartfoxTest } from "../core/chartfox.js";
 
 export default { mount: (root, ctx, args) => new SettingsApp(root, ctx, args) };
 
@@ -23,6 +24,7 @@ const SECTIONS = [
   { group: 0, id: "wallpaper", label: "Wallpaper", icon: G("#32ade6", I.wallpaper) },
   { group: 0, id: "battery", label: "Battery", icon: G("#34c759", I.battery) },
   { group: 1, id: "simbrief", label: "SimBrief", icon: G("#e2483d", "SB") },
+  { group: 1, id: "chartfox", label: "ChartFox", icon: G("#f26b21", "CF") },
   { group: 1, id: "fleet", label: "Aircraft & Fleet", icon: G("#ff9f0a", I.plane) },
   { group: 1, id: "units", label: "Units & Time", icon: G("#30b0c7", I.ruler) },
   { group: 1, id: "data", label: "Data Sources", icon: G("#64d2ff", I.cloud) },
@@ -80,6 +82,12 @@ class SettingsApp {
       b.textContent = "Importing…";
       try { const f = await fetchSimbrief(); toast(`OK – ${f.callsign} ${f.orig.icao}–${f.dest.icao}`); } catch (e) { toast(e.message); }
       this.render();
+    }
+    if (a === "cftest") {
+      if (!chartfoxToken()) return toast("Paste your ChartFox API token first");
+      try { toast((await chartfoxTest()) ? "ChartFox token works ✓" : "ChartFox answered, but EGLL was not found"); }
+      catch (e) { toast(e.message); }
+      return;
     }
     if (a === "sbapi") {
       try {
@@ -198,6 +206,18 @@ class SettingsApp {
     setTimeout(() => navigator.getBattery?.().then(b => { const el = $("#battlvl", this.root); if (el) el.textContent = `${Math.round(b.level * 100)}%${b.charging ? " · Charging" : ""}`; }).catch(() => {}), 0);
     return this.group("", [this.row("Battery level", `<span class="dim" id="battlvl">Not reported by this browser</span>`)], "The status bar shows this device's battery when the browser reports it.");
   }
+  chartfox() {
+    const s = settings();
+    return `<div class="card pad"><b>ChartFox – free charts for flight simulation</b>
+      <p class="dim">With a ChartFox API token, Charts lists ChartFox's SID, STAR, approach and airport charts for every airport and opens them in the chart viewer (tagged CF).</p></div>` +
+      this.group("API access", [
+        this.row("API token", this.input("chartfoxToken", s.chartfoxToken, "paste token", "password")),
+        this.row("Check token", `<button class="lnk" data-do="cftest">Test</button>`),
+      ], "Get a token from ChartFox: sign in at chartfox.org with your VATSIM account and apply for API access at chartfox.org/developers/apply. The token is stored on this device and only sent to api.chartfox.org.") +
+      this.group("Without a token", [
+        this.row("Open chartfox.org", `<a class="lnk" href="https://chartfox.org/" target="_blank" rel="noopener">Open</a>`, "Charts › MENU › ChartFox opens the current airport on chartfox.org"),
+      ]);
+  }
   simbrief() {
     const s = settings(), f = getFlight();
     return this.group("Account", [
@@ -236,7 +256,7 @@ class SettingsApp {
       ["Weather radar", "RainViewer"],
       ["Terrain map", "Esri World Physical"],
       ["Flight plans", "SimBrief"],
-      ["Charts", "Lido (MSFS 2024), generated airport pages, your own PDFs"],
+      ["Charts", "ChartFox (API token), Lido (MSFS 2024), generated airport pages, your own PDFs"],
     ];
     return this.group("", rows.map(([a, b]) => this.row(a, `<span class="dim">${b}</span>`)), "All data is for flight simulation use only.");
   }
@@ -250,7 +270,7 @@ class SettingsApp {
   }
   about() {
     return this.group("", [
-      this.row("Name", "Rotaidem Flight Bag"), this.row("Software Version", "1.4.1 (26.11)"), this.row("Model", "iPad Air (web)"),
+      this.row("Name", "Rotaidem Flight Bag"), this.row("Software Version", "1.5.0 (26.11)"), this.row("Model", "iPad Air (web)"),
       this.row("Apps", String(layout().grid.length + layout().dock.length)),
     ], "An electronic flight bag for flight simulation, modelled on airline EFB workflows. Not for real-world navigation or performance calculations.");
   }

@@ -255,3 +255,12 @@
 .c-com .fr span { font-weight: 600; }
 .c-com .fr.none { display: block; color: #aaa; }
 .c-com { right: 62px; }
+
+/* ChartFox entry in the chart lists */
+.c-cfbtn { display: flex; align-items: center; gap: 12px; width: calc(100% - 24px); margin: 10px 12px 12px; padding: 10px 14px; border: 0; border-radius: 12px; background: #20242c; color: #fff; text-align: left; cursor: pointer; }
+.c-cfbtn b { width: 34px; height: 34px; border-radius: 9px; background: #f26b21; color: #fff; display: grid; place-items: center; font: 900 14px Arial, sans-serif; flex: none; }
+.c-cfbtn span { flex: 1; font-size: 14px; font-weight: 600; }
+.c-cfbtn small { display: block; font-weight: 400; font-size: 12px; opacity: .7; }
+.c-cfbtn em { font-style: normal; font-size: 22px; opacity: .6; }
+
+.c-pop .tag.cf { background: #f26b21; color: #fff; }

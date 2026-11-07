@@ -116,6 +116,7 @@ class EnrouteApp {
     this.own = M.ownship(this.map, { color: "#ffffff", outline: "#1f3fd6", size: 36 });
     this.map.on("dragstart", () => { if (this.own.follow) { this.own.follow = false; $('[data-t="follow"]', this.el).classList.remove("on"); } });
     this.map.on("moveend", () => this.checkGround());
+    this.map.on("zoom", () => this.groundFade()); // live fade while pinching
     const gi = $(".fd-ground input", this.el);
     gi.addEventListener("input", () => {
       const b = this.ground?.search(gi.value.trim().toUpperCase());
@@ -611,12 +612,20 @@ class EnrouteApp {
   }
 
   /** Show the Lido-style ground map when zoomed in near an airport. */
+  // The airport moving map is an overlay on the enroute map: it loads from zoom 11.5 and
+  // fades in between zoom 12 and 13.25 (and out again), instead of switching on at once.
+  groundFade() {
+    const z = this.map.getZoom(), op = Math.max(0, Math.min(1, (z - 12) / 1.25));
+    this.map.getContainer().style.setProperty("--gop", op.toFixed(2));
+  }
   async checkGround() {
     const z = this.map.getZoom();
-    const near = z >= 12.5;
+    const near = z >= 12.5, load = z >= 11.5;
+    this.groundFade();
     if (near !== this.el.classList.contains("ground")) { this.el.classList.toggle("ground", near); this.renderTop(); }
     $(".fd-ground", this.el).classList.toggle("hidden", !near || !this.ground);
-    if (!near) { if (this.ground) { this.ground.remove(); this.ground = null; this.groundIcao = null; this.map.getContainer().style.background = ""; } return; }
+    if (z < 11) { if (this.ground) { this.ground.remove(); this.ground = null; this.groundIcao = null; this.map.getContainer().style.background = ""; } return; }
+    if (!load) return;
     const c = this.map.getCenter();
     const aps = await allAirports();
     let best = null, bd = 1e9;
@@ -625,11 +634,12 @@ class EnrouteApp {
       const d = distNM(c.lat, c.lng, a[5], a[6]);
       if (d < bd) { bd = d; best = a; }
     }
-    if (!best || bd > 6 || best[0] === this.groundIcao || this.groundLoading === best[0]) return;
+    if (!best || bd > 8 || best[0] === this.groundIcao || this.groundLoading === best[0]) return;
     this.groundLoading = best[0];
+    if (z >= 12.5) { $(".fd-ground", this.el).classList.remove("hidden"); $(".fd-ground span", this.el).textContent = `${best[0]} · loading ground map…`; }
     try {
       const data = await fetchGround(best[0], best[5], best[6]);
-      if (this.map.getZoom() < 12.5) return;
+      if (this.map.getZoom() < 11) return;
       this.ground?.remove();
       const fl = getFlight();
       this.ground = groundLayer(this.map, data, { theme: "day", active: [fl?.orig?.rwy, fl?.dest?.rwy].filter(Boolean) }).addTo(this.map);

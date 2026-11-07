@@ -14,6 +14,7 @@ import * as M from "../core/map.js";
 import { fetchGround, groundLayer } from "../core/amm.js";
 import { simState, onSim } from "../core/sim.js";
 import { chartOwnship } from "../core/ownchart.js";
+import { chartfoxIndex, chartfoxFileUrl, chartfoxToken } from "../core/chartfox.js";
 import { lidoStatus, lidoIndex, lidoPageImages } from "../core/lido.js";
 
 const CATS = ["GEN", "SID", "STAR", "APPR", "TAXI"];
@@ -38,6 +39,7 @@ class ChartsApp {
     this.render();
     this.unsub = [
       listen("flight", () => { this.renderTop(); this.refreshRoute(); }),
+      listen("settings", ({ key }) => { if (key === "chartfoxToken" && this.icao) this.loadAirport(this.icao, this.role, true); }),
       onSim(st => { this.own?.update(st); this.ammOwn?.update(st); this.moveOnChart(st); }),
     ];
     if (args) this.show(args);
@@ -160,7 +162,7 @@ class ChartsApp {
         <button class="c-tab apt" data-act="airports"><b class="mag">${esc(this.icao || "-")}</b><b class="mag sm">${esc(this.ap?.iata || "")}</b><span>${esc(this.role === "OTHER" ? "AD" : this.role || "")}</span></button>
         ${ch ? `<button class="c-tab chart" data-cat="${ch.cat}"><b>${esc(CAT_NAMES[ch.cat])}</b><span>[${esc(ch.index || "—")}]</span></button>` : ""}
         <div class="c-title">${ch ? esc(ch.title || ch.name) : this.icao ? `<span class="dim">${esc(this.ap?.name || "")}</span>` : ""}</div>
-        ${ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch?.source === "lido" ? `<div class="c-src">Lido · MSFS 2024</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
+        ${ch?.source === "chartfox" ? `<div class="c-src">ChartFox</div>` : ch?.source === "local" ? `<div class="c-src">Imported</div>` : ch?.source === "amm" ? `<div class="c-src">OpenStreetMap · live</div>` : ch?.source === "lido" ? `<div class="c-src">Lido · MSFS 2024</div>` : ch ? `<div class="c-src">Generated</div>` : ""}`;
     }
   }
 
@@ -231,6 +233,7 @@ class ChartsApp {
       <button data-m="import">Import charts (PDF / image)…</button>
       <button data-m="night">${this.night ? "Day mode" : "Night mode"}</button>
       <button data-m="simbrief">Reload flight from SimBrief</button>
+      <button data-m="chartfox">ChartFox${this.icao ? " – " + esc(this.icao) : ""}</button>
       <button data-m="home">Close Charts</button></div>`, { side: "left", width: 290 });
     on(p.el, "click", "[data-m]", async (e, b) => {
       closePopovers();
@@ -241,6 +244,7 @@ class ChartsApp {
       if (m === "import") this.importDialog();
       if (m === "night") this.act("night");
       if (m === "simbrief") fetchSimbrief().then(() => toast("Flight updated from SimBrief")).catch(err => toast(err.message));
+      if (m === "chartfox") openChartFox(this.icao);
       if (m === "home") this.ctx.home();
     });
   }
@@ -266,6 +270,14 @@ class ChartsApp {
       const local = await this.localCharts(icao);
       this.index.push(...local);
       this.setMode("ad");
+      // ChartFox charts (needs the API token from Settings › ChartFox)
+      if (chartfoxToken()) chartfoxIndex(icao).then(cf => {
+        if (this.icao !== icao || !cf.length) return;
+        this.index.push(...cf.map(c => ({ ...c, short: shortName(c.name) })));
+        this.renderRight();
+        if (!this.chart || this.chart.source === "gen" || this.chart.source === "amm") this.autoSelect(this.role === "TO" ? "STAR" : this.role === "FROM" ? "SID" : "TAXI", false);
+        toast(`${cf.length} ChartFox charts for ${icao}`);
+      }).catch(e => toast(e.message));
       // Lido charts from MSFS 2024 (via the in-sim Flight Bag Lido panel)
       lidoStatus().then(async st => {
         if (!st.bridge || this.icao !== icao) return;
@@ -314,7 +326,7 @@ class ChartsApp {
     const rwy = this.role === "FROM" ? f?.orig?.rwy : this.role === "TO" ? f?.dest?.rwy : null;
     const proc = this.role === "FROM" ? f?.sid : this.role === "TO" ? f?.star : null;
     const pick = (proc && list.find(c => c.procs.some(p => p.startsWith(proc)) || c.name.includes(proc))) ||
-      (rwy && list.find(c => c.runways.includes(rwy))) || list.find(c => c.source === "lido" || c.source === "local") || list[0];
+      (rwy && list.find(c => c.runways.includes(rwy))) || list.find(c => c.source === "chartfox" || c.source === "lido" || c.source === "local") || list[0];
     if (pick) this.display(pick);
     else if (display) this.chartList(cat, $(`[data-cat="${cat}"]`, this.el));
   }
@@ -335,11 +347,13 @@ class ChartsApp {
     const body = html(`<div class="c-pop list">
       <header><b>${esc(this.icao)}</b> · ${CAT_NAMES[cat]} <span class="dim">${list.length} chart${list.length === 1 ? "" : "s"}</span></header>
       ${rwys.length ? `<div class="chips"><button class="on" data-rw="">ALL</button>${rwys.map(r => `<button data-rw="${esc(r)}">${esc(r)}</button>`).join("")}</div>` : ""}
-      <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.geo ? `<span class="tag geo" title="Geo-referenced: shows your aircraft">✈</span>` : ""}${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : c.source === "lido" ? `<span class="tag lido">LIDO</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
+      <div class="rows">${list.map(c => `<button class="row ${this.chart?.id === c.id ? "on" : ""}" data-id="${esc(c.id)}" data-rws="${esc(c.runways.join(" "))}"><span class="idx">${esc(c.index)}</span><span class="nm">${esc(c.name)}</span>${c.geo ? `<span class="tag geo" title="Geo-referenced: shows your aircraft">✈</span>` : ""}${c.source === "local" ? `<span class="tag">PDF</span>` : c.source === "gen" ? `<span class="tag">GEN</span>` : c.source === "lido" ? `<span class="tag lido">LIDO</span>` : c.source === "chartfox" ? `<span class="tag cf">CF</span>` : ""}</button>`).join("") || `<div class="c-note">No ${CAT_NAMES[cat]} charts available.</div>`}</div>
       ${notams.length ? `<div class="c-notams"><h5>NOTAM <span>${notams.length}</span></h5>${notams.map(n => `<article><b>${esc(n.id || "")}</b><p>${esc(n.text)}</p></article>`).join("")}</div>` : ""}
+      ${list.some(c => c.source === "chartfox") ? "" : `<button class="c-cfbtn" data-cf><b>CF</b><span>${chartfoxToken() ? `Open ${esc(this.icao)} on chartfox.org` : `Add ChartFox charts`}<small>${chartfoxToken() ? "ChartFox has no charts in this group" : "Paste your ChartFox API token in Settings › ChartFox"}</small></span><em>›</em></button>`}
       </div>`);
     const p = popover(anchor, body, { side: this.mode === "ad" && anchor.closest(".c-right") ? "left" : "bottom", width: 460 });
     on(p.el, "click", "[data-id]", (e, b) => { closePopovers(); this.display(this.index.find(c => c.id === b.dataset.id)); });
+    on(p.el, "click", "[data-cf]", () => { closePopovers(); chartfoxToken() ? openChartFox(this.icao) : this.ctx.open("settings", { section: "chartfox" }); });
     on(p.el, "click", "[data-rw]", (e, b) => {
       $$("[data-rw]", p.el).forEach(x => x.classList.toggle("on", x === b));
       $$(".row", p.el).forEach(r => { r.style.display = !b.dataset.rw || r.dataset.rws.split(" ").includes(b.dataset.rw) ? "" : "none"; });
@@ -369,6 +383,19 @@ class ChartsApp {
         rot.classList.toggle("invert", this.night);
       } else if (chart.source === "local") {
         ({ w, h } = await renderFile(chart.rec, rot));
+        rot.classList.toggle("invert", this.night);
+      } else if (chart.source === "chartfox") {
+        const url = await chartfoxFileUrl(chart);
+        let r;
+        try { r = await fetch(url); if (!r.ok) throw new Error(); }
+        catch {
+          // Some ChartFox charts link to sites that don't allow loading inside other apps.
+          window.open(url, "_blank", "noopener");
+          throw new Error("This chart's source can't be shown inside the app – it opened in its own window");
+        }
+        const blob = await r.blob();
+        const type = blob.type && blob.type !== "application/octet-stream" ? blob.type : /\.png|\.jpe?g|\.gif|\.webp/i.test(url) ? "image/png" : "application/pdf";
+        ({ w, h } = await renderFile({ blob, type }, rot));
         rot.classList.toggle("invert", this.night);
       } else if (chart.source === "lido") {
         const urls = await lidoPageImages(chart, this.night);
@@ -774,6 +801,10 @@ class ChartsApp {
 }
 
 // ---------------------------------------------------------------- helpers
+// chartfox.org itself can't be shown inside other apps, so its airport page opens in its own window.
+function openChartFox(icao) {
+  window.open(`https://chartfox.org/${/^[A-Z0-9]{3,4}$/.test(icao || "") ? icao : ""}`, "_blank", "noopener");
+}
 /** First line of a NOTAM's E) item, as on the GEN tile ("TEMPORARY CLOSURE OF TWY N4…"). */
 function notamHeadline(t) {
   const e = t.split(/\bE\)\s*/)[1] || t;
