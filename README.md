@@ -59,7 +59,7 @@ Charts are relayed in memory only and never saved to disk; they are for use with
 
 ## Live traffic
 
-Tap **TFC** (Enroute tools, Charts ENR layers and airport moving map, VFR Map) to show pilots online on VATSIM as cyan arrows. Positions arrive every 15 s and are extrapolated along heading and ground speed in between, so traffic glides. Moving aircraft are labelled with callsign, type, altitude and speed; tap any aircraft for its route. Sim AI traffic is not shown.
+Tap **TFC** (Enroute tools, Charts ENR layers and airport moving map, VFR Map) to show pilots online on VATSIM as cyan arrows. Positions arrive every 15 s; taxiing aircraft glide to each new position (so they follow the real taxi route, up to 15 s behind) and airborne aircraft are projected ahead along their track. Moving aircraft are labelled with callsign, type, altitude and speed; tap any aircraft for its route. Sim AI traffic is not shown.
 
 ## Moving charts
 

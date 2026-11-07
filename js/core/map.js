@@ -344,15 +344,26 @@ export function vatsimData() {
  * transition glides them in between. own() returns the own-ship state so it is not shown twice.
  */
 export function trafficLayer(map, { own = () => null, max = 300 } = {}) {
+  // Own pane above the airport-map labels, so taxiway signs never cover traffic.
+  if (!map.getPane("tfc")) map.createPane("tfc").style.zIndex = 630;
   const g = L.layerGroup(), shown = new Map();
   let pilots = [], timers = [];
   const fl = a => (a >= 18000 ? `FL${String(Math.round(a / 100)).padStart(3, "0")}` : `${Math.round(a / 100) * 100}`);
   const icon = p => L.divIcon({ className: "tfc", iconSize: [26, 26], iconAnchor: [13, 13],
     html: `<svg viewBox="0 0 26 26"><path d="M13 2 L21 23 L13 18.5 L5 23Z"/></svg><span><b>${esc(p.callsign)}</b> ${esc(p.flight_plan?.aircraft_short || "")}<br>${p.groundspeed < 40 ? "GND" : fl(p.altitude)} · ${p.groundspeed} KT</span>` });
-  // Where the pilot is now: last report moved along heading at ground speed (max 1 min ahead).
-  const now = p => {
-    const dt = Math.min(60, Math.max(0, (Date.now() - Date.parse(p.last_updated)) / 1000));
-    return p.groundspeed > 3 ? destination(p.latitude, p.longitude, p.heading, (p.groundspeed * dt) / 3600) : [p.latitude, p.longitude];
+  // VATSIM reports every ~15 s. Airborne traffic flies straight: project it ahead (max 20 s).
+  // Taxiing traffic turns, so projecting it runs it across the grass and then snaps back:
+  // aim at the reported spot instead and glide there over the next update interval.
+  const airborne = p => p.groundspeed >= 60;
+  const target = p => {
+    if (!airborne(p)) return [p.latitude, p.longitude];
+    const dt = Math.min(20, Math.max(0, (Date.now() - Date.parse(p.last_updated)) / 1000));
+    return destination(p.latitude, p.longitude, p.heading, (p.groundspeed * dt) / 3600);
+  };
+  const at = m => {
+    const [la, lo] = target(m.p), k = Math.min(1, (Date.now() - m.t0) / (airborne(m.p) ? 3000 : 15000));
+    if (!m.from || Math.abs(lo - m.from.lng) > 180) return [la, lo];
+    return [m.from.lat + (la - m.from.lat) * k, m.from.lng + (lo - m.from.lng) * k];
   };
   const draw = () => {
     if (!map.hasLayer(g)) return;
@@ -364,18 +375,28 @@ export function trafficLayer(map, { own = () => null, max = 300 } = {}) {
       keep.add(p.callsign);
       let m = shown.get(p.callsign);
       if (!m) {
-        m = L.marker(now(p), { icon: icon(p), keyboard: false }).bindPopup(() => `<b>${esc(p.callsign)}</b> ${esc(p.flight_plan?.aircraft_short || "")}<br>${esc(p.flight_plan?.departure || "?")} → ${esc(p.flight_plan?.arrival || "?")}<br>${p.groundspeed < 40 ? "On ground" : fl(p.altitude) + " ft"} · ${p.groundspeed} kt · HDG ${p.heading}°`, { className: "tfc-pop" });
+        m = L.marker(target(p), { icon: icon(p), keyboard: false, pane: "tfc" }).bindPopup(() => `<b>${esc(m.p.callsign)}</b> ${esc(m.p.flight_plan?.aircraft_short || "")}<br>${esc(m.p.flight_plan?.departure || "?")} → ${esc(m.p.flight_plan?.arrival || "?")}<br>${m.p.groundspeed < 40 ? "On ground" : fl(m.p.altitude) + " ft"} · ${m.p.groundspeed} kt · HDG ${m.p.heading}°`, { className: "tfc-pop" });
         shown.set(p.callsign, m); g.addLayer(m);
-      } else m.setLatLng(now(p));
-      m.p = p;
-      const el = m.getElement();
-      if (el) { el.firstElementChild.style.transform = `rotate(${p.heading}deg)`; el.classList.toggle("parked", p.groundspeed <= 3); }
+        m.rot = p.heading;
+      }
+      if (m.p !== p) {
+        // New report: glide on from where the arrow is now, not from the old report.
+        if (m.p) { m.from = m.getLatLng(); m.t0 = Date.now(); m.rot += ((((p.heading - m.rot) % 360) + 540) % 360) - 180; }
+        m.p = p;
+        const el = m.getElement();
+        if (el) {
+          el.firstElementChild.style.transform = `rotate(${m.rot}deg)`;
+          el.classList.toggle("parked", p.groundspeed <= 3);
+          const lbl = el.querySelector("span");
+          if (lbl) lbl.innerHTML = `<b>${esc(p.callsign)}</b> ${esc(p.flight_plan?.aircraft_short || "")}<br>${p.groundspeed < 40 ? "GND" : fl(p.altitude)} · ${p.groundspeed} KT`;
+        }
+      }
     }
     for (const [k, m] of shown) if (!keep.has(k)) { g.removeLayer(m); shown.delete(k); }
     map.getContainer().classList.toggle("tfc-labels", map.getZoom() >= 8);
   };
   const load = async () => { try { pilots = (await vatsimData()).pilots || []; g.count = pilots.length; draw(); } catch { g.unavailable = true; } };
-  const glide = () => { for (const m of shown.values()) if (m.p) m.setLatLng(now(m.p)); };
+  const glide = () => { for (const m of shown.values()) if (m.p) m.setLatLng(at(m)); };
   g.on("add", () => { load(); timers = [setInterval(load, 15e3), setInterval(glide, 1000)]; map.on("moveend", draw); });
   g.on("remove", () => { timers.forEach(clearInterval); map.off("moveend", draw); g.clearLayers(); shown.clear(); map.getContainer().classList.remove("tfc-labels"); });
   return g;
