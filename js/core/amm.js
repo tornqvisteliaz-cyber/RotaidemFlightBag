@@ -4,6 +4,7 @@
 // from OpenStreetMap (Overpass API), so coverage depends on OSM mapping.
 /* global L */
 import { esc } from "./ui.js";
+import { bearing } from "./geo.js";
 
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
 const mem = new Map();
@@ -50,7 +51,7 @@ const widthM = (t, d) => { const w = parseFloat(t.width); return isFinite(w) && 
  * Build the ground layer. Returns a layer group with .setTheme(), .search(ref),
  * .bounds and .refs (list of taxiway names).
  */
-export function groundLayer(map, data, { theme = "day" } = {}) {
+export function groundLayer(map, data, { theme = "day", active = [] } = {}) {
   for (const p of ["amm-area", "amm-twy", "amm-rwy", "amm-lbl"]) {
     if (!map.getPane(p)) { map.createPane(p); }
   }
@@ -102,10 +103,19 @@ export function groundLayer(map, data, { theme = "day" } = {}) {
     add(L.polyline(pts, { pane: "amm-rwy", interactive: false, dashArray: "14 10" }), p => ({ color: p.rwyMark, weight: 1.4, opacity: .95 }));
     const ref = (w.tags.ref || "").split("/");
     const ends = [pts[0], pts[pts.length - 1]];
+    const brg = bearing(ends[0][0], ends[0][1], ends[1][0], ends[1][1]);
     ref.forEach((r, i) => {
       if (!r || !ends[i]) return;
-      g.addLayer(L.marker(ends[i], { pane: "amm-lbl", interactive: false, icon: L.divIcon({ className: "amm-rwy", html: `<span>${esc(r.trim())}</span>`, iconSize: null }) }));
+      const id = r.trim(), hdg = Math.round(i ? (brg + 180) % 360 : brg) || 360;
+      g.addLayer(L.marker(ends[i], { pane: "amm-lbl", interactive: false, icon: L.divIcon({ className: `amm-rwy ${active.includes(id) ? "act" : ""}`, html: `<span><b>${esc(id)}</b><i>${String(hdg).padStart(3, "0")}°</i></span>`, iconSize: null }) }));
     });
+    // Length written along the runway, like "4000m 13,123'".
+    const lenM = Math.round(map.distance(ends[0], ends[1]) / 10) * 10;
+    if (lenM > 400) {
+      const mid = L.latLng((ends[0][0] + ends[1][0]) / 2, (ends[0][1] + ends[1][1]) / 2);
+      const rot = ((brg + 270) % 180) - 90; // keep the text upright
+      g.addLayer(L.marker(mid, { pane: "amm-lbl", interactive: false, icon: L.divIcon({ className: "amm-rwy-len", html: `<span style="transform:translate(-50%,-50%) rotate(${rot.toFixed(1)}deg)">${lenM}m&nbsp;&nbsp;${Math.round(lenM / 0.3048).toLocaleString("en")}'</span>`, iconSize: null }) }));
+    }
   }
   // Holding positions
   for (const w of ways) if (w.tags.aeroway === "holding_position") add(L.polyline(ll(w.geometry), { pane: "amm-rwy", interactive: false }), p => ({ color: p.hold, weight: 3.5, opacity: 1 }));
@@ -135,8 +145,9 @@ export function groundLayer(map, data, { theme = "day" } = {}) {
     for (const [layer, m, extra] of metered) layer.setStyle({ weight: Math.max(1.5, m / mpp + extra) });
     const el = map.getPane("amm-lbl");
     el.classList.toggle("amm-hide-twy", z < 13.5);
-    el.classList.toggle("amm-hide-hold", z < 14.5);
+    el.classList.toggle("amm-hide-hold", z < 15.5);
     el.classList.toggle("amm-hide-stand", z < 15.5);
+    el.classList.toggle("amm-hide-len", z < 13);
     el.classList.toggle("amm-z-hi", z >= 16.5);
   };
   map.on("zoomend", scale);

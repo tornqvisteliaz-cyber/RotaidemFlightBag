@@ -32,6 +32,22 @@ const GA = [
   [/\bCUB\b|J3|PA18|SAVAGE|ICON|A5\b|EXTRA|E330|CAP ?10|DV20|JMB|VL3|ZLIN|DR40/, "LSA", "Light aircraft"],
 ];
 
+/** Wingspan in metres by ICAO type designator (shown in the airport moving map header). */
+export const WINGSPAN = {
+  A319: 35.8, A320: 35.8, A321: 35.8, A19N: 35.8, A20N: 35.8, A21N: 35.8, A332: 60.3, A333: 60.3, A339: 64.0,
+  A343: 60.3, A346: 63.45, A359: 64.75, A35K: 64.75, B736: 35.79, B737: 35.79, B738: 35.79, B739: 35.79,
+  B37M: 35.92, B38M: 35.92, B39M: 35.92, B744: 64.44, B748: 68.4, B752: 38.05, B753: 38.05, B772: 60.93,
+  B77W: 64.8, B788: 60.12, B789: 60.12, B78X: 60.12, C172: 11.0, C152: 10.11, PA28: 10.67, SR22: 11.68, DA40: 11.94,
+};
+const OPT_ICAO = { "A320": "A320", "A330-300": "A333", "A340-600": "A346", "A350-900": "A359", "B737-800": "B738", "B737-900ER": "B739", "B737-9": "B39M", "B747-400": "B744", "B757-200": "B752", "B787-9": "B789" };
+/** "B738 (117.42' · 35.79m)" for an ICAO code, or just the code when the span is unknown. */
+export function spanLabel(icao) {
+  const m = WINGSPAN[icao];
+  return m ? `${icao} (${(m / 0.3048).toFixed(2)}' · ${m.toFixed(2)}m)` : icao || "";
+}
+/** ICAO type of the sim aircraft (detected) or of the flight plan. */
+export const icaoOf = (det, flight) => (det?.opt && OPT_ICAO[det.opt]) || det?.ga || flight?.aircraft?.icao || "";
+
 /** { opt, ga, name, tail, source } for the current sim aircraft, or null. */
 export function detectAircraft(s = simState()) {
   if (!s?.connected) return null;

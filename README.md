@@ -57,6 +57,10 @@ MSFS 2024 ships Lido charts, but the sim only exposes them to code running insid
 
 Charts are relayed in memory only and never saved to disk; they are for use with your own copy of MSFS 2024. This is experimental: the panel and the server relay are built from the SDK's documented chart API, but chart image export depends on the sim allowing its chart images to be read back.
 
+## Live traffic
+
+Tap **TFC** (Enroute tools, Charts ENR layers and airport moving map, VFR Map) to show pilots online on VATSIM as cyan arrows. Positions arrive every 15 s and are extrapolated along heading and ground speed in between, so traffic glides. Moving aircraft are labelled with callsign, type, altitude and speed; tap any aircraft for its route. Sim AI traffic is not shown.
+
 ## Moving charts
 
 Generated 10-9 airport diagrams are geo-referenced whenever every runway has real threshold coordinates (marked GEO-REFERENCED on the chart and ✈ in the chart list). Your aircraft is drawn on them live, in Charts (tap the aircraft button to keep it centred) and in Enroute (TAXI opens the diagram beside the map). Lido and imported PDF charts carry no geo-reference, so they stay static – as on real EFBs.

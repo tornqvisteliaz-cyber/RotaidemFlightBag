@@ -23,6 +23,7 @@ class VfrMap {
       <div class="gm-strip"><div><small>GS</small><b data-v="gs">—</b></div><div><small>ALT</small><b data-v="alt">—</b></div><div><small>TRK</small><b data-v="trk">—</b></div><div><small>VS</small><b data-v="vs">—</b></div><div><small>AGL</small><b data-v="agl">—</b></div></div>
       <div class="gm-near"><header>Nearest</header><div class="rows"></div></div>
       <div class="gm-btns"><button data-g="follow" class="on" title="Follow aircraft"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M20.5 3.5 L3.5 10.6 L11 12.9 L13.3 20.5Z" fill="currentColor"/></svg></button>
+        <button data-g="tfc" title="Traffic (VATSIM)"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2 L19 21 L12 17 L5 21Z" fill="currentColor"/></svg></button>
         <button data-g="in">+</button><button data-g="out">−</button></div>
       <div class="gm-src"></div>
     </div>`;
@@ -48,6 +49,7 @@ class VfrMap {
       if (b.dataset.g === "in") this.map.zoomIn(1);
       if (b.dataset.g === "out") this.map.zoomOut(1);
       if (b.dataset.g === "follow") this.setFollow(!this.follow);
+      if (b.dataset.g === "tfc") { this.tfc ||= M.trafficLayer(this.map, { own: simState }); const on = !this.map.hasLayer(this.tfc); on ? this.tfc.addTo(this.map) : this.tfc.remove(); b.classList.toggle("on", on); }
     });
     on(this.root, "click", "[data-apt]", (e, b) => { this.setFollow(false); this.map.setView([+b.dataset.lat, +b.dataset.lon], 13); });
     this.onSim(s);

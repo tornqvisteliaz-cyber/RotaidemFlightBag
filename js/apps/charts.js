@@ -53,7 +53,7 @@ class ChartsApp {
           <button class="c-sq" data-act="search" title="Search airport">${UI.search}</button>
           <div class="c-layers">
             <button class="c-sq" data-act="sliders" title="Map options">${UI.sliders}</button>
-            ${[["ad", "AD"], ["com", "COM<br>Area"], ["fir", "FIR"], ["grid", "GRID"], ["awy", "AWY HI"], ["wpt", "WPT"], ["nav", "NAVAID"], ["wx", "WX"], ["sig", "SIGMET"]]
+            ${[["ad", "AD"], ["com", "COM<br>Area"], ["fir", "FIR"], ["grid", "GRID"], ["awy", "AWY HI"], ["wpt", "WPT"], ["nav", "NAVAID"], ["tfc", "TFC"], ["wx", "WX"], ["sig", "SIGMET"]]
               .map(([k, l]) => `<button class="c-layer ${(k === "com" ? this.enr.com : this.layers[k]) ? "on" : ""}" data-layer="${k}">${l}</button>`).join("")}
           </div>
         </div>
@@ -77,7 +77,8 @@ class ChartsApp {
           <div class="c-amm-bar"><div class="srch"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21"/></svg><input placeholder="Taxiway" maxlength="5" autocomplete="off" spellcheck="false"></div>
             <div class="chips"></div>
             <button data-amm="follow" title="Follow aircraft"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M20.5 3.5 L3.5 10.6 L11 12.9 L13.3 20.5Z" fill="currentColor"/></svg></button>
-            <button data-amm="fit" title="Whole airport">${UI.fit}</button></div>
+            <button data-amm="fit" title="Whole airport">${UI.fit}</button>
+            <button data-amm="tfc" class="tfc-btn ${this.layers.tfc ? "on" : ""}" title="Traffic (VATSIM)"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2 L19 21 L12 17 L5 21Z" fill="currentColor"/></svg></button></div>
           <div class="c-amm-msg"></div></div>
         <div class="c-viewer ad-only">
           <div class="c-page"><div class="c-rot"></div></div>
@@ -428,7 +429,9 @@ class ChartsApp {
     try {
       const data = await fetchGround(chart.icao, this.ap.lat, this.ap.lon);
       if (this.ammIcao !== chart.icao) return;
-      this.ammLayer = groundLayer(this.amm, data, { theme: this.night ? "night" : "day" }).addTo(this.amm);
+      const fl = getFlight();
+      this.ammLayer = groundLayer(this.amm, data, { theme: this.night ? "night" : "day", active: [fl?.orig?.rwy, fl?.dest?.rwy].filter(Boolean) }).addTo(this.amm);
+      if (this.layers.tfc) (this.ammTfc ||= M.trafficLayer(this.amm, { own: simState })).addTo(this.amm);
       if (this.ammLayer.bounds) this.amm.fitBounds(this.ammLayer.bounds, { padding: [20, 20] });
       $(".c-amm-bar .chips", this.el).innerHTML = this.ammLayer.refs.slice(0, 40).map(r => `<button data-twy="${esc(r)}">${esc(r)}</button>`).join("");
       msg.style.display = this.ammLayer.empty ? "flex" : "none";
@@ -440,6 +443,15 @@ class ChartsApp {
     }
   }
   ammAct(a, b) {
+    if (a === "tfc") {
+      this.layers.tfc = !this.layers.tfc; kv.set("charts.layers", this.layers);
+      b.classList.toggle("on", this.layers.tfc);
+      $('[data-layer="tfc"]', this.el)?.classList.toggle("on", this.layers.tfc);
+      this.ammTfc ||= M.trafficLayer(this.amm, { own: simState });
+      this.layers.tfc ? this.ammTfc.addTo(this.amm) : this.ammTfc.remove();
+      this.applyLayers();
+      return;
+    }
     if (a === "fit" && this.ammLayer?.bounds) { this.ammOwn.follow = false; $('[data-amm="follow"]', this.el).classList.remove("on"); this.amm.fitBounds(this.ammLayer.bounds, { padding: [20, 20] }); }
     if (a === "follow") {
       const s = simState();
@@ -671,7 +683,8 @@ class ChartsApp {
   }
   applyLayers() {
     if (!this.map) return;
-    for (const k of ["ad", "nav", "fir", "awy", "wx", "sig", "grid"]) {
+    this.lyr.tfc ||= M.trafficLayer(this.map, { own: simState });
+    for (const k of ["ad", "nav", "fir", "awy", "wx", "sig", "grid", "tfc"]) {
       const l = this.lyr[k];
       if (!l) continue;
       if (this.layers[k] && !this.map.hasLayer(l)) l.addTo(this.map);

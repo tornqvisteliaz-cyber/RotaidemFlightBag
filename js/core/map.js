@@ -1,6 +1,6 @@
 // Shared Leaflet map building blocks used by the Charts ENR view and the Enroute app.
 /* global L, topojson */
-import { unwrap, greatCircle, distNM } from "./geo.js";
+import { unwrap, greatCircle, distNM, destination } from "./geo.js";
 import { allAirports, loadNavaids } from "./airports.js";
 import { sigmets, metarsBox, windsAloft, CAT_COLOR } from "./wx.js";
 import { esc } from "./ui.js";
@@ -53,16 +53,18 @@ export function createMap(el, { center = [10, 100], zoom = 4, minZoom = 2, maxZo
  * (Own-ship lives in its own pane and stays visible.)
  */
 function calmMarkers(map) {
-  const pane = map.getPane("markerPane");
-  map.on("zoomstart", () => { map._calm = true; pane.classList.add("zooming"); });
+  const box = map.getContainer();
+  map.on("zoomstart", () => { map._calm = true; box.classList.add("map-zooming"); });
   map.on("zoomend", () => {
     if (!map._calm) return;
     map._calm = false;
-    map.eachLayer(l => { if (l instanceof L.Marker && l._icon && l.options.pane === "markerPane") l.update(); });
-    pane.classList.remove("zooming");
+    box.classList.add("map-snap"); // traffic glides with a CSS transition; jump straight to the new spot instead
+    map.eachLayer(l => { if (l instanceof L.Marker && l._icon && l.options.pane !== "own") l.update(); });
+    box.classList.remove("map-zooming");
+    requestAnimationFrame(() => box.classList.remove("map-snap"));
   });
 }
-const calm = m => m._map?._calm && m.options.pane === "markerPane";
+const calm = m => m._map?._calm && m.options.pane !== "own";
 const mUpdate = L.Marker.prototype.update, mAnim = L.Marker.prototype._animateZoom;
 L.Marker.prototype.update = function () { return calm(this) ? this : mUpdate.call(this); };
 L.Marker.prototype._animateZoom = function (o) { if (!calm(this)) mAnim.call(this, o); };
@@ -326,9 +328,62 @@ export async function sigmetLayer({ fd = true, hazard = null, color = "#b52a3a" 
   return g;
 }
 
+/** The VATSIM network data feed (updated every 15 s); shared by ATC and traffic. */
+let vCache = null;
+export function vatsimData() {
+  if (vCache && Date.now() - vCache.t < 15e3) return vCache.p;
+  const p = fetch("https://data.vatsim.net/v3/vatsim-data.json").then(r => r.json());
+  vCache = { t: Date.now(), p };
+  p.catch(() => { vCache = null; });
+  return p;
+}
+
+/**
+ * Live traffic (VATSIM pilots) as cyan arrows, like the traffic on the airline moving maps.
+ * Positions are dead-reckoned every second from ground speed and heading, and a CSS
+ * transition glides them in between. own() returns the own-ship state so it is not shown twice.
+ */
+export function trafficLayer(map, { own = () => null, max = 300 } = {}) {
+  const g = L.layerGroup(), shown = new Map();
+  let pilots = [], timers = [];
+  const fl = a => (a >= 18000 ? `FL${String(Math.round(a / 100)).padStart(3, "0")}` : `${Math.round(a / 100) * 100}`);
+  const icon = p => L.divIcon({ className: "tfc", iconSize: [26, 26], iconAnchor: [13, 13],
+    html: `<svg viewBox="0 0 26 26"><path d="M13 2 L21 23 L13 18.5 L5 23Z"/></svg><span><b>${esc(p.callsign)}</b> ${esc(p.flight_plan?.aircraft_short || "")}<br>${p.groundspeed < 40 ? "GND" : fl(p.altitude)} · ${p.groundspeed} KT</span>` });
+  // Where the pilot is now: last report moved along heading at ground speed (max 1 min ahead).
+  const now = p => {
+    const dt = Math.min(60, Math.max(0, (Date.now() - Date.parse(p.last_updated)) / 1000));
+    return p.groundspeed > 3 ? destination(p.latitude, p.longitude, p.heading, (p.groundspeed * dt) / 3600) : [p.latitude, p.longitude];
+  };
+  const draw = () => {
+    if (!map.hasLayer(g)) return;
+    const b = map.getBounds().pad(0.3), o = own(), keep = new Set();
+    for (const p of pilots) {
+      if (keep.size >= max) break;
+      if (!b.contains([p.latitude, p.longitude])) continue;
+      if (o?.connected && distNM(o.lat, o.lon, p.latitude, p.longitude) < 0.05) continue; // that's us
+      keep.add(p.callsign);
+      let m = shown.get(p.callsign);
+      if (!m) {
+        m = L.marker(now(p), { icon: icon(p), keyboard: false }).bindPopup(() => `<b>${esc(p.callsign)}</b> ${esc(p.flight_plan?.aircraft_short || "")}<br>${esc(p.flight_plan?.departure || "?")} → ${esc(p.flight_plan?.arrival || "?")}<br>${p.groundspeed < 40 ? "On ground" : fl(p.altitude) + " ft"} · ${p.groundspeed} kt · HDG ${p.heading}°`, { className: "tfc-pop" });
+        shown.set(p.callsign, m); g.addLayer(m);
+      } else m.setLatLng(now(p));
+      m.p = p;
+      const el = m.getElement();
+      if (el) { el.firstElementChild.style.transform = `rotate(${p.heading}deg)`; el.classList.toggle("parked", p.groundspeed <= 3); }
+    }
+    for (const [k, m] of shown) if (!keep.has(k)) { g.removeLayer(m); shown.delete(k); }
+    map.getContainer().classList.toggle("tfc-labels", map.getZoom() >= 8);
+  };
+  const load = async () => { try { pilots = (await vatsimData()).pilots || []; g.count = pilots.length; draw(); } catch { g.unavailable = true; } };
+  const glide = () => { for (const m of shown.values()) if (m.p) m.setLatLng(now(m.p)); };
+  g.on("add", () => { load(); timers = [setInterval(load, 15e3), setInterval(glide, 1000)]; map.on("moveend", draw); });
+  g.on("remove", () => { timers.forEach(clearInterval); map.off("moveend", draw); g.clearLayers(); shown.clear(); map.getContainer().classList.remove("tfc-labels"); });
+  return g;
+}
+
 /** Live VATSIM controllers (frequency callouts) positioned on their FIR label. */
 export async function vatsimAtc(firs) {
-  const d = await (await fetch("https://data.vatsim.net/v3/vatsim-data.json")).json();
+  const d = await vatsimData();
   const g = L.layerGroup();
   const byPrefix = new Map();
   for (const [boundary, f] of firs.names) byPrefix.set((f.prefix || f.icao).toUpperCase(), { ...f, boundary });

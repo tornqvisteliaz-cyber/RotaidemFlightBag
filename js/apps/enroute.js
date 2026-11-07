@@ -14,6 +14,7 @@ import { simState, onSim } from "../core/sim.js";
 import { allAirports } from "../core/airports.js";
 import { airportDiagram, PAGE_W, PAGE_H } from "../core/genchart.js";
 import { chartOwnship } from "../core/ownchart.js";
+import { detectAircraft, icaoOf, spanLabel } from "../core/aircraft.js";
 
 export default { mount: (root, ctx, args) => new EnrouteApp(root, ctx, args) };
 
@@ -62,6 +63,7 @@ class EnrouteApp {
         <button data-t="rings" title="Range rings">${UI.rings}</button>
         <button data-t="terrain" class="${this.opts.terrain ? "on" : ""}" title="Terrain">${UI.terrain}</button>
         <button data-t="atc" class="${this.opts.atc ? "on" : ""}" title="ATC frequencies (VATSIM)">${UI.headset}</button>
+        <button data-t="tfc" class="tfc-btn ${this.opts.tfc ? "on" : ""}" title="Traffic (VATSIM)"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 2 L19 21 L12 17 L5 21Z" fill="currentColor"/></svg><small>TFC</small></button>
         <button data-t="clear" title="Clear drawings">${UI.eraser}</button>
         <button data-t="collapse" title="Hide toolbar">${UI.chevR}</button>
       </div>
@@ -95,7 +97,7 @@ class EnrouteApp {
     $(".fd-top", this.el).innerHTML = `
       <div class="fd-id"><b>${esc(f?.callsign || "NO FLIGHT")}</b><span>${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}Z</span></div>
       <div class="fd-tabs"><button data-a="flight">Flight</button><button data-a="routeinfo">Route Info</button><button data-a="pubs">Pubs</button></div>
-      <div class="fd-ttl"><b>${f ? `${esc(f.orig?.icao)} → ${esc(f.dest?.icao)}` : "Enroute"}</b><span>${esc(this.opts.mapType)}${f?.aircraft?.icao ? " · " + esc(f.aircraft.icao) : ""}</span></div>
+      <div class="fd-ttl"><b>${this.el?.classList.contains("ground") ? "Airport Moving Map" : f ? `${esc(f.orig?.icao)} → ${esc(f.dest?.icao)}` : "Enroute"}</b><span>${esc(this.opts.mapType)}${icaoOf(detectAircraft(), f) ? " · " + esc(this.el?.classList.contains("ground") ? spanLabel(icaoOf(detectAircraft(), f)) : icaoOf(detectAircraft(), f)) : ""}</span></div>
       <div class="fd-icons">
         <button data-a="search">${UI.search}</button>
         <button data-a="fitroute">${UI.route}</button>
@@ -182,6 +184,8 @@ class EnrouteApp {
     set(this.lyr.sig, this.opts.sig);
     for (const k of ["turb", "ice", "va", "sfc", "winds"]) set(this.lyr[k], this.opts[k]);
     set(this.lyr.atc, this.opts.atc);
+    this.lyr.tfc ||= M.trafficLayer(this.map, { own: simState });
+    set(this.lyr.tfc, this.opts.tfc);
     kv.set("enroute.opts", this.opts);
     this.renderWxDesc();
   }
@@ -512,6 +516,7 @@ class EnrouteApp {
       return;
     }
     if (t === "terrain") { this.opts.terrain = !this.opts.terrain; b.classList.toggle("on", this.opts.terrain); this.applyBase(); this.apply(); return; }
+    if (t === "tfc") { this.opts.tfc = !this.opts.tfc; b.classList.toggle("on", this.opts.tfc); this.apply(); if (this.opts.tfc) toast("Traffic: pilots online on VATSIM"); return; }
     if (t === "atc") { this.opts.atc = !this.opts.atc; b.classList.toggle("on", this.opts.atc); if (this.opts.atc && !this.lyr.atc) this.loadAtc(); this.apply(); return; }
     if (t === "clear") { this.drawings.clearLayers(); this.rings.clearLayers(); this.endTool(); toast("Drawings cleared"); return; }
     if (t === "layers") return this.weatherLayers(b);
@@ -609,7 +614,7 @@ class EnrouteApp {
   async checkGround() {
     const z = this.map.getZoom();
     const near = z >= 12.5;
-    this.el.classList.toggle("ground", near);
+    if (near !== this.el.classList.contains("ground")) { this.el.classList.toggle("ground", near); this.renderTop(); }
     $(".fd-ground", this.el).classList.toggle("hidden", !near || !this.ground);
     if (!near) { if (this.ground) { this.ground.remove(); this.ground = null; this.groundIcao = null; this.map.getContainer().style.background = ""; } return; }
     const c = this.map.getCenter();
@@ -626,7 +631,8 @@ class EnrouteApp {
       const data = await fetchGround(best[0], best[5], best[6]);
       if (this.map.getZoom() < 12.5) return;
       this.ground?.remove();
-      this.ground = groundLayer(this.map, data, { theme: "day" }).addTo(this.map);
+      const fl = getFlight();
+      this.ground = groundLayer(this.map, data, { theme: "day", active: [fl?.orig?.rwy, fl?.dest?.rwy].filter(Boolean) }).addTo(this.map);
       this.groundIcao = best[0];
       $(".fd-ground", this.el).classList.remove("hidden");
       $(".fd-ground span", this.el).textContent = this.ground.empty ? `${best[0]} · no taxiway data in OSM` : `${best[0]} · ${this.ground.refs.length} taxiways`;

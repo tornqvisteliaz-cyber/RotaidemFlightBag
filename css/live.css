@@ -69,10 +69,15 @@
 .c-amm-bar > button.on { background: #2e9d8e; }
 .c-amm-msg { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 700; display: none; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 12px; background: rgba(255,255,255,.95); color: #333; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
 
-.amm-twy-lbl span { display: inline-block; transform: translate(-50%, -50%); padding: 1px 5px; background: #1a1a1a; color: #f2c200; font: 700 12px "Helvetica Neue", Arial, sans-serif; border: 1px solid #f2c200; border-radius: 2px; white-space: nowrap; }
-.amm-rwy span { display: inline-block; transform: translate(-50%, -50%); padding: 2px 6px; background: #c8102e; color: #fff; font: 700 13px "Helvetica Neue", Arial, sans-serif; border-radius: 2px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
-.amm-stand span { display: inline-block; transform: translate(-50%, -50%); font: 600 10px "Helvetica Neue", Arial, sans-serif; color: #2d2f33; white-space: nowrap; text-shadow: 0 0 2px #f1f0eb, 0 0 2px #f1f0eb; }
-.charts.night .amm-stand span { color: #d0d3d8; text-shadow: 0 0 2px #17191c, 0 0 2px #17191c; }
+.amm-twy-lbl span { display: inline-block; transform: translate(-50%, -50%); padding: 1px 5px; background: #e9cf3a; color: #111; font: 700 12.5px "Helvetica Neue", Arial, sans-serif; border: 1.5px solid #111; border-radius: 2px; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.amm-rwy span { display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -50%); min-width: 46px; padding: 3px 7px 2px; background: #a5141f; color: #fff; border: 2px solid #fff; border-radius: 50%; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.4); line-height: 1; }
+.amm-rwy b { font: 700 15px "Helvetica Neue", Arial, sans-serif; }
+.amm-rwy i { font: 600 9px "Helvetica Neue", Arial, sans-serif; font-style: normal; opacity: .9; }
+.amm-rwy.act span { background: #31b335; }
+.amm-rwy-len span { display: inline-block; white-space: nowrap; font: 700 12px "Helvetica Neue", Arial, sans-serif; color: #fff; text-shadow: 0 0 3px #222, 0 0 3px #222; }
+.amm-hide-len .amm-rwy-len { display: none; }
+.amm-stand span { display: inline-grid; place-items: center; transform: translate(-50%, -50%); min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: #2160c4; color: #fff; border: 1.5px solid #fff; font: 700 10.5px "Helvetica Neue", Arial, sans-serif; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+
 .amm-hold i { display: block; width: 10px; height: 10px; border-radius: 50%; background: #e0362c; border: 2px solid #fff; }
 .amm-hide-twy .amm-twy-lbl, .amm-hide-hold .amm-hold, .amm-hide-stand .amm-stand { display: none; }
 .amm-z-hi .amm-stand span { font-size: 12px; }
@@ -114,5 +119,20 @@
 .at-panel .sf { width: 34px; height: 34px; }
 .at-panel .home i { width: 34px; height: 34px; border-radius: 10px; border: 3px solid #fff; display: block; }
 /* Map symbols hide for the length of a zoom/pinch and fade back in at their new spot (see calmMarkers in map.js) */
-.leaflet-marker-pane { transition: opacity .16s ease-out; }
-.leaflet-marker-pane.zooming { opacity: 0; transition: none; }
+.leaflet-marker-pane, .leaflet-amm-lbl-pane { transition: opacity .16s ease-out; }
+.map-zooming .leaflet-marker-pane, .map-zooming .leaflet-amm-lbl-pane { opacity: 0; transition: none; }
+
+/* Live traffic (VATSIM) – cyan arrows like the airline moving maps; glides between 1 s updates */
+.tfc { transition: transform 1s linear; }
+.map-zooming .tfc, .map-snap .tfc { transition: none !important; }
+.tfc svg { width: 26px; height: 26px; display: block; }
+.tfc path { fill: #39d3c6; stroke: #0b3b38; stroke-width: 1.4; stroke-linejoin: round; }
+.tfc span { display: none; position: absolute; left: 24px; top: 2px; white-space: nowrap; font: 600 10.5px/1.25 Arial, sans-serif; color: #0b3b38; background: rgba(255,255,255,.85); padding: 1px 4px; border-radius: 3px; }
+.tfc-labels .tfc span { display: block; }
+.charts.night .tfc span { background: rgba(10,14,20,.85); color: #7ff0e6; }
+
+/* TFC buttons */
+.fd-tools .tfc-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; }
+.fd-tools .tfc-btn small { font: 700 8px Arial, sans-serif; letter-spacing: .3px; margin-top: -2px; }
+.leaflet-popup.tfc-pop .leaflet-popup-content { font: 13px/1.4 Arial, sans-serif; margin: 8px 12px; }
+.tfc-labels .tfc.parked span { display: none; } /* parked aircraft: arrow only, tap for details */
